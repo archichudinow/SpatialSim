@@ -24,7 +24,7 @@ function ModelContent() {
   }, [scene]);
 
   return (
-    <primitive object={scene} />
+    <primitive object={scene} scale={[1, 1, 1]} />
   );
 }
 

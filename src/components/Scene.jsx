@@ -4,10 +4,37 @@ import { Lighting } from './Lighting';
 import { Ground } from './Ground';
 import { Model } from './Model';
 import { Controls } from './Controls';
-import { VRInterface } from './VRInterface';
 import { ErrorBoundary } from './ErrorBoundary';
+import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
+import { useThree } from '@react-three/fiber';
 
-function SceneContent({ isVR }) {
+// Component that sets up VR (no rendering, just setup)
+function VRSetup() {
+  const { gl } = useThree();
+  
+  useEffect(() => {
+    if (!gl) return;
+
+    if (navigator.xr) {
+      navigator.xr.isSessionSupported('immersive-vr').then(supported => {
+        if (supported) {
+          document.body.appendChild(VRButton.createButton(gl));
+        }
+      }).catch(() => {});
+    }
+
+    return () => {
+      const vrButton = document.querySelector('button.xr-button');
+      if (vrButton) {
+        vrButton.remove();
+      }
+    };
+  }, [gl]);
+
+  return null; // No visual rendering
+}
+
+function SceneContent({ isVR, fps }) {
   return (
     <>
       <color attach="background" args={['#bfd4dc']} />
@@ -15,6 +42,7 @@ function SceneContent({ isVR }) {
       <Ground />
       <Model />
       <Controls isVR={isVR} />
+      <VRSetup />
     </>
   );
 }
@@ -70,14 +98,26 @@ export function Scene() {
             alpha: false,
             xr: { enabled: true }
           }}
-          xr
         >
-          <SceneContent isVR={false} />
+          <SceneContent isVR={false} fps={fps} />
         </Canvas>
       </ErrorBoundary>
 
-      {/* UI Overlay */}
-      <VRInterface fps={fps} />
+      {/* FPS Counter UI - outside Canvas */}
+      <div style={{
+        position: 'fixed',
+        top: 20,
+        right: 20,
+        color: '#333',
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        zIndex: 998,
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        padding: '10px',
+        borderRadius: '4px'
+      }}>
+        FPS: {Math.round(fps)}
+      </div>
     </>
   );
 }

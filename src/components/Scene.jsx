@@ -6,6 +6,7 @@ import { Ground } from './Ground';
 import { Model } from './Model';
 import { Controls } from './Controls';
 import { VRInterface } from './VRInterface';
+import { ErrorBoundary } from './ErrorBoundary';
 
 function SceneContent({ isVR }) {
   return (
@@ -77,19 +78,21 @@ export function Scene() {
 
   return (
     <>
-      <Canvas
-        camera={{ 
-          position: [0, 1.6, 5], 
-          fov: 75,
-          near: 0.01,
-          far: 5000
-        }}
-        gl={{ antialias: true, alpha: false }}
-      >
-        <XR>
-          <SceneContent isVR={false} />
-        </XR>
-      </Canvas>
+      <ErrorBoundary>
+        <Canvas
+          camera={{ 
+            position: [0, 1.6, 5], 
+            fov: 75,
+            near: 0.01,
+            far: 5000
+          }}
+          gl={{ antialias: true, alpha: false }}
+        >
+          <XR>
+            <SceneContent isVR={false} />
+          </XR>
+        </Canvas>
+      </ErrorBoundary>
 
       {/* Debug VR Status */}
       {vrStatus && (

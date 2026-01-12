@@ -1,8 +1,13 @@
 import { Scene } from './components/Scene';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import './App.css';
 
 function App() {
-  return <Scene />;
+  return (
+    <ErrorBoundary>
+      <Scene />
+    </ErrorBoundary>
+  );
 }
 
 export default App;

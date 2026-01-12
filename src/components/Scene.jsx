@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { XR, useXR } from '@react-three/xr';
+import { XR, XRButton } from '@react-three/xr';
 import { Lighting } from './Lighting';
 import { Ground } from './Ground';
 import { Model } from './Model';
@@ -23,6 +23,7 @@ export function Scene() {
   const [isVR, setIsVR] = useState(false);
   const [fps, setFps] = useState(60);
   const [vrStatus, setVrStatus] = useState('');
+  const canvasRef = useRef(null);
 
   // Simple FPS counter using requestAnimationFrame
   useEffect(() => {
@@ -52,37 +53,49 @@ export function Scene() {
   const handleEnterVR = async () => {
     try {
       if (!navigator.xr) {
-        setVrStatus('WebXR not supported');
+        setVrStatus('WebXR not available');
         return;
       }
 
-      setVrStatus('Checking VR support...');
+      setVrStatus('Checking immersive-vr support...');
 
-      const isSessionSupported = await navigator.xr.isSessionSupported('immersive-vr');
-      if (!isSessionSupported) {
-        setVrStatus('immersive-vr not supported');
+      // Check support
+      const supported = await navigator.xr.isSessionSupported('immersive-vr');
+      if (!supported) {
+        setVrStatus('immersive-vr not supported on this device');
         return;
       }
 
       setVrStatus('Requesting VR session...');
 
-      // Just start VR, let XR component handle the session
+      // Request session
+      const session = await navigator.xr.requestSession('immersive-vr', {
+        requiredFeatures: ['local-floor'],
+        optionalFeatures: ['hand-tracking'],
+      });
+
+      setVrStatus('VR session started!');
       setIsVR(true);
-      setVrStatus('VR mode enabled');
+
+      // Listen for session end
+      session.addEventListener('end', () => {
+        setIsVR(false);
+        setVrStatus('VR session ended');
+      });
     } catch (err) {
-      setVrStatus(`Error: ${err.message}`);
-      console.error('VR Error:', err);
+      setVrStatus(`VR Error: ${err.message}`);
+      console.error('WebXR Error:', err);
     }
   };
 
   const handleExitVR = () => {
     setIsVR(false);
-    setVrStatus('VR exited');
   };
 
   return (
     <>
       <Canvas
+        ref={canvasRef}
         camera={{ 
           position: [0, 1.6, 5], 
           fov: 75,
@@ -92,11 +105,11 @@ export function Scene() {
         gl={{ antialias: true, alpha: false }}
       >
         {isVR ? (
-          <XR onSessionEnd={handleExitVR}>
-            <SceneContent isVR={isVR} />
+          <XR>
+            <SceneContent isVR={true} />
           </XR>
         ) : (
-          <SceneContent isVR={isVR} />
+          <SceneContent isVR={false} />
         )}
       </Canvas>
 
@@ -106,15 +119,17 @@ export function Scene() {
           position: 'fixed',
           bottom: 20,
           left: 20,
-          backgroundColor: 'rgba(255, 100, 100, 0.8)',
+          backgroundColor: 'rgba(255, 100, 100, 0.9)',
           color: 'white',
-          padding: '10px 15px',
+          padding: '12px 20px',
           borderRadius: '4px',
-          fontSize: '12px',
+          fontSize: '13px',
           fontFamily: 'monospace',
-          zIndex: 1000
+          zIndex: 1000,
+          maxWidth: '300px',
+          wordWrap: 'break-word'
         }}>
-          VR Status: {vrStatus}
+          {vrStatus}
         </div>
       )}
 

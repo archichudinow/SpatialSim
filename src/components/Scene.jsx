@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { XR } from '@react-three/xr';
 import { Lighting } from './Lighting';
 import { Ground } from './Ground';
 import { Model } from './Model';
@@ -68,9 +67,7 @@ export function Scene() {
           }}
           gl={{ antialias: true, alpha: false }}
         >
-          <XR>
-            <SceneContent isVR={false} />
-          </XR>
+          <SceneContent isVR={false} />
         </Canvas>
       </ErrorBoundary>
 

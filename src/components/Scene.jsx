@@ -65,7 +65,12 @@ export function Scene() {
             near: 0.01,
             far: 5000
           }}
-          gl={{ antialias: true, alpha: false }}
+          gl={{ 
+            antialias: true, 
+            alpha: false,
+            xr: { enabled: true }
+          }}
+          xr
         >
           <SceneContent isVR={false} />
         </Canvas>

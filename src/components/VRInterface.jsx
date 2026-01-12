@@ -1,40 +1,33 @@
 import { useState, useEffect } from 'react';
+import { useThree } from '@react-three/fiber';
+import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 
 export function VRInterface({ fps }) {
+  const { gl } = useThree();
   const [vrSupported, setVrSupported] = useState(false);
-  const [isVRActive, setIsVRActive] = useState(false);
 
   useEffect(() => {
+    if (!gl) return;
+
     // Check if WebXR is supported
     if (navigator.xr) {
       navigator.xr.isSessionSupported('immersive-vr').then(supported => {
         setVrSupported(supported);
+        if (supported) {
+          // Add VRButton to page (it will create the button in the DOM)
+          document.body.appendChild(VRButton.createButton(gl));
+        }
       }).catch(() => setVrSupported(false));
     }
-  }, []);
 
-  const handleEnterVR = async () => {
-    try {
-      if (!navigator.xr) {
-        console.error('WebXR not available');
-        return;
+    return () => {
+      // Cleanup VR button if needed
+      const vrButton = document.querySelector('button.xr-button');
+      if (vrButton) {
+        vrButton.remove();
       }
-
-      const session = await navigator.xr.requestSession('immersive-vr', {
-        requiredFeatures: ['local-floor'],
-        optionalFeatures: ['hand-tracking'],
-      });
-
-      setIsVRActive(true);
-
-      // Listen for session end
-      session.addEventListener('end', () => {
-        setIsVRActive(false);
-      });
-    } catch (err) {
-      console.error('VR Error:', err);
-    }
-  };
+    };
+  }, [gl]);
 
   return (
     <div style={{
@@ -44,29 +37,16 @@ export function VRInterface({ fps }) {
       color: '#333',
       fontFamily: 'monospace',
       fontSize: '14px',
-      zIndex: 999,
+      zIndex: 998,
       textAlign: 'right'
     }}>
       <div style={{ marginBottom: '20px', backgroundColor: 'rgba(255, 255, 255, 0.8)', padding: '10px', borderRadius: '4px' }}>
         FPS: {Math.round(fps)}
       </div>
-      {vrSupported && (
-        <button 
-          onClick={handleEnterVR}
-          disabled={isVRActive}
-          style={{
-            backgroundColor: isVRActive ? '#666' : '#007bff',
-            color: 'white',
-            padding: '12px 24px',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: isVRActive ? 'not-allowed' : 'pointer',
-            fontSize: '14px',
-            fontWeight: 'bold'
-          }}
-        >
-          {isVRActive ? 'VR Active' : 'Enter VR'}
-        </button>
+      {!vrSupported && (
+        <div style={{ color: '#999', fontSize: '12px' }}>
+          VR not available
+        </div>
       )}
     </div>
   );

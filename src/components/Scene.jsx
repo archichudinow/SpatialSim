@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { XR, useXR } from '@react-three/xr';
+import { XR } from '@react-three/xr';
 import { Lighting } from './Lighting';
 import { Ground } from './Ground';
 import { Model } from './Model';
@@ -21,8 +21,6 @@ function SceneContent({ isVR }) {
 }
 
 function XRContent() {
-  const { session } = useXR();
-  
   return (
     <>
       <SceneContent isVR={true} />
@@ -32,7 +30,6 @@ function XRContent() {
 
 export function Scene() {
   const [fps, setFps] = useState(60);
-  const [vrStatus, setVrStatus] = useState('');
 
   // Simple FPS counter using requestAnimationFrame
   useEffect(() => {
@@ -59,23 +56,6 @@ export function Scene() {
     return () => cancelAnimationFrame(animationId);
   }, []);
 
-  // Check WebXR support on mount
-  useEffect(() => {
-    if (navigator.xr) {
-      navigator.xr.isSessionSupported('immersive-vr').then(supported => {
-        if (supported) {
-          setVrStatus('VR ready');
-        } else {
-          setVrStatus('VR not supported on this device');
-        }
-      }).catch(err => {
-        setVrStatus('XR check failed: ' + err.message);
-      });
-    } else {
-      setVrStatus('WebXR not available');
-    }
-  }, []);
-
   return (
     <>
       <ErrorBoundary>
@@ -94,27 +74,7 @@ export function Scene() {
         </Canvas>
       </ErrorBoundary>
 
-      {/* Debug VR Status */}
-      {vrStatus && (
-        <div style={{
-          position: 'fixed',
-          bottom: 20,
-          left: 20,
-          backgroundColor: 'rgba(255, 100, 100, 0.9)',
-          color: 'white',
-          padding: '12px 20px',
-          borderRadius: '4px',
-          fontSize: '13px',
-          fontFamily: 'monospace',
-          zIndex: 1000,
-          maxWidth: '300px',
-          wordWrap: 'break-word'
-        }}>
-          {vrStatus}
-        </div>
-      )}
-
-      {/* UI Overlay with XRButton */}
+      {/* UI Overlay */}
       <VRInterface fps={fps} />
     </>
   );

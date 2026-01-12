@@ -17,7 +17,7 @@ export function Lighting() {
       />
 
       {/* Ambient Light - Global illumination */}
-      <ambientLight intensity={0.5} />
+      <ambientLight intensity={0.9} />
     </>
   );
 }

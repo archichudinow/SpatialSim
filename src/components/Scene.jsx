@@ -95,9 +95,14 @@ export function Scene() {
           }}
           gl={{ 
             antialias: true, 
-            alpha: false,
-            xr: { enabled: true }
+            alpha: false
           }}
+          onCreated={({ gl }) => {
+            // Enable XR as per instruction.md
+            gl.xr.enabled = true;
+            gl.xr.setReferenceSpaceType('local');
+          }}
+          frameloop="always"
         >
           <SceneContent isVR={false} fps={fps} />
         </Canvas>

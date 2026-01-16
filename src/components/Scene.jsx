@@ -6,7 +6,6 @@ import { Ground } from './Ground';
 import { Model } from './Model';
 import { Controls } from './Controls';
 import { ErrorBoundary } from './ErrorBoundary';
-import { VRLocomotion } from './VRLocomotion';
 
 function SceneContent() {
   return (
@@ -16,12 +15,8 @@ function SceneContent() {
       <Ground />
       <Model />
       <Controls />
-      {/* VR Controllers - shows controller models */}
-      <Controllers rayMaterial={{ color: 'blue' }} />
-      {/* Optional: Hand tracking support */}
+      <Controllers />
       <Hands />
-      {/* Custom locomotion with teleportation */}
-      <VRLocomotion />
     </>
   );
 }

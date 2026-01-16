@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { XR, Controllers, Hands, TeleportationPlane } from '@react-three/xr';
+import { XR, Controllers, Hands, Interactive } from '@react-three/xr';
 import { Lighting } from './Lighting';
 import { Ground } from './Ground';
 import { Model } from './Model';
@@ -8,6 +8,7 @@ import { Controls } from './Controls';
 import { ErrorBoundary } from './ErrorBoundary';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { useThree } from '@react-three/fiber';
+import { VRLocomotion } from './VRLocomotion';
 
 // Component that sets up VR (no rendering, just setup)
 function VRSetup() {
@@ -45,21 +46,12 @@ function SceneContent({ isVR, fps }) {
       {!isVR && <Controls isVR={isVR} />}
       {isVR && (
         <>
-          {/* VR Controllers */}
-          <Controllers />
+          {/* VR Controllers - shows controller models */}
+          <Controllers rayMaterial={{ color: 'blue' }} />
           {/* Optional: Hand tracking support */}
           <Hands />
-          {/* Teleportation plane - users can teleport anywhere on the ground */}
-          <TeleportationPlane 
-            leftHand 
-            rightHand 
-            maxDistance={10}
-          >
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-              <planeGeometry args={[100, 100]} />
-              <meshBasicMaterial transparent opacity={0} />
-            </mesh>
-          </TeleportationPlane>
+          {/* Custom locomotion with joystick movement */}
+          <VRLocomotion />
         </>
       )}
       <VRSetup />

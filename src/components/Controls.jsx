@@ -1,18 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
+import { useXR } from '@react-three/xr';
 import * as THREE from 'three';
 
 const SPEED = 0.15;
 const SPRINT_SPEED = 0.3;
 const LOOK_SPEED = 0.002;
 
-export function Controls({ isVR }) {
+export function Controls() {
   const { camera, gl } = useThree();
+  const { isPresenting } = useXR();
   const keysRef = useRef({});
   const rotationRef = useRef({ x: 0, y: 0 });
 
   // Only enable desktop controls if NOT in VR
-  if (isVR) return null;
+  if (isPresenting) return null;
 
   useEffect(() => {
     const canvas = gl.domElement;

@@ -1,67 +1,28 @@
 import { useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { XR, Controllers, Hands, Interactive } from '@react-three/xr';
+import { XR, Controllers, Hands, VRButton as XRVRButton } from '@react-three/xr';
 import { Lighting } from './Lighting';
 import { Ground } from './Ground';
 import { Model } from './Model';
 import { Controls } from './Controls';
 import { ErrorBoundary } from './ErrorBoundary';
-import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
-import { useThree } from '@react-three/fiber';
 import { VRLocomotion } from './VRLocomotion';
 
-// Component that sets up VR (no rendering, just setup)
-function VRSetup() {
-  const { gl } = useThree();
-  
-  useEffect(() => {
-    if (!gl) return;
-
-    if (navigator.xr) {
-      navigator.xr.isSessionSupported('immersive-vr').then(supported => {
-        if (supported) {
-          document.body.appendChild(VRButton.createButton(gl));
-        }
-      }).catch(() => {});
-    }
-
-    return () => {
-      const vrButton = document.querySelector('button.xr-button');
-      if (vrButton) {
-        vrButton.remove();
-      }
-    };
-  }, [gl]);
-
-  return null; // No visual rendering
-}
-
-function SceneContent({ isVR, fps }) {
+function SceneContent() {
   return (
     <>
       <color attach="background" args={['#bfd4dc']} />
       <Lighting />
       <Ground />
       <Model />
-      {!isVR && <Controls isVR={isVR} />}
-      {isVR && (
-        <>
-          {/* VR Controllers - shows controller models */}
-          <Controllers rayMaterial={{ color: 'blue' }} />
-          {/* Optional: Hand tracking support */}
-          <Hands />
-          {/* Custom locomotion with joystick movement */}
-          <VRLocomotion />
-        </>
-      )}
-      <VRSetup />
+      <Controls />
+      {/* VR Controllers - shows controller models */}
+      <Controllers rayMaterial={{ color: 'blue' }} />
+      {/* Optional: Hand tracking support */}
+      <Hands />
+      {/* Custom locomotion with teleportation */}
+      <VRLocomotion />
     </>
-  );
-}
-
-function XRContent() {
-  return (
-    <SceneContent isVR={true} />
   );
 }
 
@@ -101,27 +62,18 @@ export function Scene() {
             position: [0, 1.6, 5], 
             fov: 75,
             near: 0.01,
+       XRVRButton />
+      <ErrorBoundary>
+        <Canvas
+          camera={{ 
+            position: [0, 1.6, 5], 
+            fov: 75,
+            near: 0.01,
             far: 5000
           }}
-          gl={{ 
-            antialias: true, 
-            alpha: false
-          }}
-          onCreated={({ gl }) => {
-            // Enable XR as per instruction.md
-            gl.xr.enabled = true;
-            gl.xr.setReferenceSpaceType('local-floor');
-          }}
-          frameloop="always"
         >
           <XR referenceSpace="local-floor">
-            <SceneContent isVR={false} fps={fps} />
-          </XR>
-        </Canvas>
-      </ErrorBoundary>
-
-      {/* FPS Counter UI - outside Canvas */}
-      <div style={{
+            <SceneContent
         position: 'fixed',
         top: 20,
         right: 20,

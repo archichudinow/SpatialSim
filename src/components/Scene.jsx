@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
+import { XR, Controllers, Hands, TeleportationPlane } from '@react-three/xr';
 import { Lighting } from './Lighting';
 import { Ground } from './Ground';
 import { Model } from './Model';
@@ -41,7 +42,26 @@ function SceneContent({ isVR, fps }) {
       <Lighting />
       <Ground />
       <Model />
-      <Controls isVR={isVR} />
+      {!isVR && <Controls isVR={isVR} />}
+      {isVR && (
+        <>
+          {/* VR Controllers */}
+          <Controllers />
+          {/* Optional: Hand tracking support */}
+          <Hands />
+          {/* Teleportation plane - users can teleport anywhere on the ground */}
+          <TeleportationPlane 
+            leftHand 
+            rightHand 
+            maxDistance={10}
+          >
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+              <planeGeometry args={[100, 100]} />
+              <meshBasicMaterial transparent opacity={0} />
+            </mesh>
+          </TeleportationPlane>
+        </>
+      )}
       <VRSetup />
     </>
   );
@@ -49,9 +69,7 @@ function SceneContent({ isVR, fps }) {
 
 function XRContent() {
   return (
-    <>
-      <SceneContent isVR={true} />
-    </>
+    <SceneContent isVR={true} />
   );
 }
 
@@ -100,11 +118,13 @@ export function Scene() {
           onCreated={({ gl }) => {
             // Enable XR as per instruction.md
             gl.xr.enabled = true;
-            gl.xr.setReferenceSpaceType('local');
+            gl.xr.setReferenceSpaceType('local-floor');
           }}
           frameloop="always"
         >
-          <SceneContent isVR={false} fps={fps} />
+          <XR referenceSpace="local-floor">
+            <SceneContent isVR={false} fps={fps} />
+          </XR>
         </Canvas>
       </ErrorBoundary>
 

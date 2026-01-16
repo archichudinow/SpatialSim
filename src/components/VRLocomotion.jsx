@@ -11,21 +11,43 @@ export function VRLocomotion() {
   
   const velocity = useRef(new THREE.Vector3());
   const direction = useRef(new THREE.Vector3());
+  const lastTurnTime = useRef(0);
+  const debugLogged = useRef(false);
   
   useFrame((state, delta) => {
     if (!isPresenting || !player) return;
 
-    // Get left controller thumbstick for movement (x and y axes)
+    // Get controller gamepads
     const leftGamepad = leftController?.inputSource?.gamepad;
     const rightGamepad = rightController?.inputSource?.gamepad;
     
-    if (leftGamepad && leftGamepad.axes.length >= 4) {
-      // Axes 2 and 3 are typically the thumbstick on Oculus Quest
-      const moveX = leftGamepad.axes[2];
-      const moveZ = leftGamepad.axes[3];
+    // Debug logging - log once when controllers are detected
+    if (!debugLogged.current && (leftGamepad || rightGamepad)) {
+      console.log('VR Controllers detected!');
+      if (leftGamepad) {
+        console.log('Left controller axes:', leftGamepad.axes.length);
+        console.log('Left controller buttons:', leftGamepad.buttons.length);
+      }
+      if (rightGamepad) {
+        console.log('Right controller axes:', rightGamepad.axes.length);
+        console.log('Right controller buttons:', rightGamepad.buttons.length);
+      }
+      debugLogged.current = true;
+    }
+    
+    // LEFT CONTROLLER - Movement (try both axis pairs)
+    if (leftGamepad && leftGamepad.axes.length >= 2) {
+      // Try axes 2,3 first (common for Oculus Quest)
+      let moveX = leftGamepad.axes.length >= 4 ? leftGamepad.axes[2] : leftGamepad.axes[0];
+      let moveZ = leftGamepad.axes.length >= 4 ? leftGamepad.axes[3] : leftGamepad.axes[1];
       
-      // Only move if thumbstick is pressed beyond dead zone
-      const deadZone = 0.2;
+      const deadZone = 0.15;
+      
+      // Log thumbstick values when moved (throttled)
+      if ((Math.abs(moveX) > deadZone || Math.abs(moveZ) > deadZone) && Math.random() < 0.01) {
+        console.log('Left thumbstick:', moveX.toFixed(2), moveZ.toFixed(2));
+      }
+      
       if (Math.abs(moveX) > deadZone || Math.abs(moveZ) > deadZone) {
         // Get camera direction (where user is looking)
         camera.getWorldDirection(direction.current);
@@ -49,16 +71,19 @@ export function VRLocomotion() {
       }
     }
     
-    // Optional: Right thumbstick for snap turning
-    if (rightGamepad && rightGamepad.axes.length >= 4) {
-      const turnX = rightGamepad.axes[2];
-      const snapTurnDeadZone = 0.7;
+    // RIGHT CONTROLLER - Snap turning
+    if (rightGamepad && rightGamepad.axes.length >= 2) {
+      let turnX = rightGamepad.axes.length >= 4 ? rightGamepad.axes[2] : rightGamepad.axes[0];
       
-      // Snap turning (could enhance this with smooth turning)
-      if (Math.abs(turnX) > snapTurnDeadZone) {
-        // Simple snap turn by 45 degrees
+      const snapTurnDeadZone = 0.7;
+      const currentTime = state.clock.elapsedTime;
+      
+      // Snap turning with cooldown to prevent multiple turns
+      if (Math.abs(turnX) > snapTurnDeadZone && (currentTime - lastTurnTime.current) > 0.3) {
         const turnAmount = turnX > 0 ? -Math.PI / 4 : Math.PI / 4;
         player.rotation.y += turnAmount;
+        lastTurnTime.current = currentTime;
+        console.log('Snap turn:', (turnAmount * 180 / Math.PI).toFixed(0), 'degrees');
       }
     }
   });

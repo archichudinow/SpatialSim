@@ -1,5 +1,5 @@
 import { useGLTF } from '@react-three/drei';
-import { Suspense, useMemo } from 'react';
+import { Suspense, useMemo, forwardRef } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
@@ -50,7 +50,7 @@ const fragmentShaderOchre = `
   }
 `;
 
-function ModelContent() {
+function ModelContent({ ref }) {
   const { scene } = useGLTF('/models/schiphol.glb');
   
   // Merge meshes with same materials and preserve original materials
@@ -191,16 +191,20 @@ function ModelContent() {
     return newScene;
   }, [scene]);
 
-  return <primitive object={optimizedScene} scale={[1, 1, 1]} />;
-}
-
-export function Model() {
   return (
-    <Suspense fallback={null}>
-      <ModelContent />
-    </Suspense>
+    <group ref={ref} scale={[1, 1, 1]}>
+      <primitive object={optimizedScene} />
+    </group>
   );
 }
+
+export const Model = forwardRef((props, ref) => {
+  return (
+    <Suspense fallback={null}>
+      <ModelContent ref={ref} />
+    </Suspense>
+  );
+});
 
 // Preload the model
 useGLTF.preload('/models/schiphol.glb');

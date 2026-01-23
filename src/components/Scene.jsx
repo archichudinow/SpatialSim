@@ -8,6 +8,7 @@ import { Controls } from './Controls';
 import { ErrorBoundary } from './ErrorBoundary';
 import { Recording, getVisualizationState } from './Recording';
 import { RecordingVisualization } from './RecordingVisualization';
+import { LoadingScreen } from './LoadingScreen';
 import recordingManager from '../utils/RecordingManager';
 import * as THREE from 'three';
 
@@ -69,7 +70,7 @@ function FrameCapture({ modelRef }) {
   return null;
 }
 
-function SceneContent() {
+function SceneContent({ project }) {
   const [showViz, setShowViz] = useState(false);
   const modelRef = useRef(null);
 
@@ -81,12 +82,15 @@ function SceneContent() {
     return () => clearInterval(checkViz);
   }, []);
 
+  // Determine which model to use: prefer project model, fallback to context
+  const modelUrl = project?.models_project || project?.models_context || null;
+
   return (
     <>
       <color attach="background" args={['#c3c3c3']} />
       <Lighting />
       <Ground />
-      <Model ref={modelRef} />
+      {modelUrl && <Model ref={modelRef} url={modelUrl} />}
       <Controls />
       <FrameCapture modelRef={modelRef} />
       <RecordingVisualization showVisualization={showViz} />
@@ -96,8 +100,9 @@ function SceneContent() {
 
 const store = createXRStore();
 
-export function Scene() {
+export function Scene({ project, loading, error, onAddRecord }) {
   const [fps, setFps] = useState(60);
+  const [showLoadingScreen, setShowLoadingScreen] = useState(true);
 
   // Simple FPS counter using requestAnimationFrame
   useEffect(() => {
@@ -124,22 +129,71 @@ export function Scene() {
     return () => cancelAnimationFrame(animationId);
   }, []);
 
+  // Hide loading screen when project loads
+  useEffect(() => {
+    if (!loading && project) {
+      // Small delay to ensure models start loading
+      const timer = setTimeout(() => {
+        setShowLoadingScreen(false);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, project]);
+
+  // Show loading screen while loading
+  if (loading || showLoadingScreen) {
+    return (
+      <LoadingScreen
+        visible={true}
+        projectName={project?.name || 'Loading...'}
+        projectDescription={project?.description}
+        onOpen={() => setShowLoadingScreen(false)}
+      />
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto px-4">
+          <h1 className="text-text-primary text-xl font-normal mb-3">Error Loading Project</h1>
+          <p className="text-text-secondary text-sm mb-6">{error}</p>
+          <button
+            onClick={() => window.location.href = '/'}
+            className="px-4 py-2 bg-transparent hover:bg-bg-hover text-text-primary text-sm border border-border-light rounded transition-colors"
+          >
+            Back to Projects
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show message if no project models
+  if (!project?.models_project && !project?.models_context) {
+    return (
+      <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto px-4">
+          <h1 className="text-text-primary text-xl font-normal mb-3">{project?.name || 'Project'}</h1>
+          <p className="text-text-secondary text-sm mb-6">No models available for this project</p>
+          <button
+            onClick={() => window.location.href = '/'}
+            className="px-4 py-2 bg-transparent hover:bg-bg-hover text-text-primary text-sm border border-border-light rounded transition-colors"
+          >
+            Back to Projects
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
-      <button onClick={() => store.enterVR()} style={{
-        position: 'fixed',
-        bottom: 20,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        padding: '12px 24px',
-        fontSize: '16px',
-        backgroundColor: '#394047',
-        color: 'white',
-        border: 'none',
-        borderRadius: '4px',
-        cursor: 'pointer',
-        zIndex: 999
-      }}>
+      <button
+        onClick={() => store.enterVR()}
+        className="fixed bottom-5 left-1/2 -translate-x-1/2 px-6 py-3 text-sm font-normal bg-transparent text-text-primary border border-border-light rounded hover:bg-bg-hover transition-all duration-200 z-[999]"
+      >
         Enter VR
       </button>
       <ErrorBoundary>
@@ -152,23 +206,12 @@ export function Scene() {
           }}
         >
           <XR store={store}>
-            <SceneContent />
+            <SceneContent project={project} />
           </XR>
         </Canvas>
       </ErrorBoundary>
-      <Recording />
-      <div style={{
-        position: 'fixed',
-        top: 20,
-        right: 20,
-        color: '#333',
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        zIndex: 998,
-        backgroundColor: 'rgba(255, 255, 255, 0.8)',
-        padding: '10px',
-        borderRadius: '4px'
-      }}>
+      <Recording project={project} onAddRecord={onAddRecord} />
+      <div className="fixed top-5 right-5 text-text-primary font-mono text-sm z-[998] bg-bg-secondary/80 px-3 py-2 rounded border border-border-light">
         FPS: {Math.round(fps)}
       </div>
     </>

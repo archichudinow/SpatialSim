@@ -50,8 +50,8 @@ const fragmentShaderOchre = `
   }
 `;
 
-function ModelContent({ ref }) {
-  const { scene } = useGLTF('/models/schiphol.glb');
+function ModelContent({ url, ref }) {
+  const { scene } = useGLTF(url);
   
   // Merge meshes with same materials and preserve original materials
   const optimizedScene = useMemo(() => {
@@ -199,14 +199,16 @@ function ModelContent({ ref }) {
 }
 
 export const Model = forwardRef((props, ref) => {
+  const { url = '/models/schiphol.glb' } = props;
+  
   return (
     <Suspense fallback={null}>
-      <ModelContent ref={ref} />
+      <ModelContent ref={ref} url={url} />
     </Suspense>
   );
 });
 
-// Preload the model
+// Preload default model
 useGLTF.preload('/models/schiphol.glb');
 
 

@@ -6,12 +6,13 @@ import './Recording.css';
 // Global state for visualization (shared with Scene)
 let visualizationState = false;
 
-export function Recording({ onFrameCapture }) {
+export function Recording({ project, onAddRecord }) {
   const [isRecording, setIsRecording] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
   const [showVisualization, setShowVisualization] = useState(false);
 
@@ -21,6 +22,13 @@ export function Recording({ onFrameCapture }) {
     scenario: 'S1',
     color: '#FF5733',
   });
+
+  // Set project ID when component mounts or project changes
+  useEffect(() => {
+    if (project?.id) {
+      recordingManager.setProjectId(project.id);
+    }
+  }, [project?.id]);
 
   // Update recording status periodically
   useEffect(() => {
@@ -81,6 +89,44 @@ export function Recording({ onFrameCapture }) {
     }
   };
 
+  const handleSaveToSupabase = async () => {
+    if (!project?.id) {
+      setExportStatus('❌ No project loaded');
+      return;
+    }
+
+    if (frameCount === 0) {
+      setExportStatus('❌ No frames to save');
+      return;
+    }
+
+    setIsSaving(true);
+    setExportStatus('⏳ Saving to database...');
+
+    try {
+      const result = await recordingManager.saveToSupabase(onAddRecord);
+      
+      if (result.success) {
+        setExportStatus(`✅ Saved to database`);
+        
+        // Reset after successful save
+        setTimeout(() => {
+          recordingManager.clear();
+          setFrameCount(0);
+          setDuration(0);
+          setExportStatus('');
+        }, 2000);
+      } else {
+        setExportStatus(`❌ Save failed: ${result.error}`);
+      }
+    } catch (error) {
+      setExportStatus(`❌ Save failed: ${error.message}`);
+      console.error('Save error:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleClear = () => {
     recordingManager.clear();
     setFrameCount(0);
@@ -117,6 +163,13 @@ export function Recording({ onFrameCapture }) {
 
   return (
     <div className="recording-panel">
+      {project && (
+        <div className="project-info">
+          <h4>{project.name}</h4>
+          {project.description && <p>{project.description}</p>}
+        </div>
+      )}
+
       <div className="recording-header">
         <h3>Recording Control</h3>
         <button
@@ -125,7 +178,7 @@ export function Recording({ onFrameCapture }) {
           disabled={isRecording}
           title="Recording settings"
         >
-          ⚙️
+          Settings
         </button>
       </div>
 
@@ -206,7 +259,7 @@ export function Recording({ onFrameCapture }) {
             onChange={(e) => handleVisualizationToggle(e.target.checked)}
             disabled={!isRecording}
           />
-          <span>👁️ Show Gaze Points</span>
+          <span>Show Gaze Points</span>
         </label>
         <div className="legend">
           <div className="legend-item">
@@ -227,29 +280,37 @@ export function Recording({ onFrameCapture }) {
             onClick={handleStartRecording}
             disabled={isExporting}
           >
-            🔴 Start Recording
+            Start Recording
           </button>
         ) : (
           <button className="btn btn-stop" onClick={handleStopRecording}>
-            ⏹️ Stop Recording
+            Stop Recording
           </button>
         )}
 
         {frameCount > 0 && !isRecording && (
           <>
             <button
+              className="btn btn-save"
+              onClick={handleSaveToSupabase}
+              disabled={isSaving || isExporting}
+              title="Save recording to Supabase"
+            >
+              {isSaving ? 'Saving...' : 'Save to Database'}
+            </button>
+            <button
               className="btn btn-export"
               onClick={handleExport}
-              disabled={isExporting}
+              disabled={isExporting || isSaving}
             >
-              📥 Export GLB
+              {isExporting ? 'Exporting...' : 'Export GLB'}
             </button>
             <button
               className="btn btn-clear"
               onClick={handleClear}
-              disabled={isExporting}
+              disabled={isExporting || isSaving}
             >
-              🗑️ Clear
+              Clear
             </button>
           </>
         )}
@@ -260,12 +321,6 @@ export function Recording({ onFrameCapture }) {
           {exportStatus}
         </div>
       )}
-
-      <div className="recording-info">
-        <p>📍 Record position (gaze origin) and lookAt (gaze focus) data</p>
-        <p>💾 Export as GLB format with animation tracks</p>
-        <p>👁️ Enable gaze point visualization while recording</p>
-      </div>
 
       {/* Export visualization state for Scene component */}
       <div style={{ display: 'none' }} data-show-visualization={showVisualization} />

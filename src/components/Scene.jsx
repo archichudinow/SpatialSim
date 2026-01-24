@@ -70,9 +70,10 @@ function FrameCapture({ modelRef }) {
   return null;
 }
 
-function SceneContent({ project }) {
+function SceneContent({ project, selectedOption }) {
   const [showViz, setShowViz] = useState(false);
   const modelRef = useRef(null);
+  const contextModelRef = useRef(null);
 
   // Update visualization state
   useEffect(() => {
@@ -82,15 +83,26 @@ function SceneContent({ project }) {
     return () => clearInterval(checkViz);
   }, []);
 
-  // Determine which model to use: prefer project model, fallback to context
-  const modelUrl = project?.models_project || project?.models_context || null;
+  // Get context models (array)
+  const contextModels = project?.models_context || [];
+  
+  // Get option model URL from selected option
+  const optionModelUrl = selectedOption?.model_url || null;
 
   return (
     <>
       <color attach="background" args={['#c3c3c3']} />
       <Lighting />
       <Ground />
-      {modelUrl && <Model ref={modelRef} url={modelUrl} />}
+      
+      {/* Load context models if they exist */}
+      {contextModels.length > 0 && contextModels.map((url, index) => (
+        <Model key={`context-${index}`} ref={index === 0 ? contextModelRef : null} url={url} />
+      ))}
+      
+      {/* Load option model if it exists */}
+      {optionModelUrl && <Model ref={modelRef} url={optionModelUrl} />}
+      
       <Controls />
       <FrameCapture modelRef={modelRef} />
       <RecordingVisualization showVisualization={showViz} />
@@ -100,9 +112,29 @@ function SceneContent({ project }) {
 
 const store = createXRStore();
 
-export function Scene({ project, loading, error, onAddRecord }) {
+export function Scene({ project, selectedOption, selectedScenario, loading, error, onReload }) {
   const [fps, setFps] = useState(60);
   const [showLoadingScreen, setShowLoadingScreen] = useState(true);
+  const [isVRMode, setIsVRMode] = useState(false);
+
+  // Monitor XR session state
+  useEffect(() => {
+    const checkVRMode = () => {
+      setIsVRMode(store.isPresenting);
+    };
+
+    // Check immediately
+    checkVRMode();
+
+    // Check periodically
+    const interval = setInterval(checkVRMode, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update RecordingManager with device type
+  useEffect(() => {
+    recordingManager.setDeviceType(isVRMode ? 'vr' : 'pc');
+  }, [isVRMode]);
 
   // Simple FPS counter using requestAnimationFrame
   useEffect(() => {
@@ -170,8 +202,12 @@ export function Scene({ project, loading, error, onAddRecord }) {
     );
   }
 
-  // Show message if no project models
-  if (!project?.models_project && !project?.models_context) {
+  // Check if we have any models to display
+  const hasContextModels = project?.models_context && project.models_context.length > 0;
+  const hasOptionModel = selectedOption?.model_url != null;
+
+  // Show message if no models available
+  if (!hasContextModels && !hasOptionModel) {
     return (
       <div className="min-h-screen bg-bg-primary flex items-center justify-center">
         <div className="text-center max-w-md mx-auto px-4">
@@ -206,11 +242,17 @@ export function Scene({ project, loading, error, onAddRecord }) {
           }}
         >
           <XR store={store}>
-            <SceneContent project={project} />
+            <SceneContent project={project} selectedOption={selectedOption} />
           </XR>
         </Canvas>
       </ErrorBoundary>
-      <Recording project={project} onAddRecord={onAddRecord} />
+      <Recording 
+        project={project} 
+        selectedOption={selectedOption}
+        selectedScenario={selectedScenario}
+        onReload={onReload}
+        isVRMode={isVRMode}
+      />
       <div className="fixed top-5 right-5 text-text-primary font-mono text-sm z-[998] bg-bg-secondary/80 px-3 py-2 rounded border border-border-light">
         FPS: {Math.round(fps)}
       </div>

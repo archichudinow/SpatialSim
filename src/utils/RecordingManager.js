@@ -1,9 +1,11 @@
 /**
  * RecordingManager - Captures position and lookAt (hit point) data in real-time
- * Stores frames with timestamps for GLB export
+ * Stores frames with timestamps for GLB export and saves to new database schema
  */
 
 import StorageService from './storageService';
+import DatabaseService from './databaseService';
+import GLBExporter from './GLBExporter';
 
 export class RecordingManager {
   constructor() {
@@ -11,26 +13,35 @@ export class RecordingManager {
     this.frames = [];
     this.startTime = null;
     this.projectId = null;
-    this.metadata = {
-      participant: 'P1',
-      scenario: 'S1',
-      color: '#FF5733',
-    };
+    this.selectedOption = null;
+    this.selectedScenario = null;
+    this.deviceType = 'pc'; // Default to PC
   }
 
   /**
-   * Set the current project ID for saving recordings
+   * Set the current project info for saving recordings
    * @param {string} projectId - Project UUID
+   * @param {Object} selectedOption - Selected option object
+   * @param {Object} selectedScenario - Selected scenario object
    */
-  setProjectId(projectId) {
+  setProjectInfo(projectId, selectedOption, selectedScenario) {
     this.projectId = projectId;
+    this.selectedOption = selectedOption;
+    this.selectedScenario = selectedScenario;
+  }
+
+  /**
+   * Set the device type (VR or PC)
+   * @param {string} deviceType - 'vr' or 'pc'
+   */
+  setDeviceType(deviceType) {
+    this.deviceType = deviceType;
   }
 
   /**
    * Initialize recording session
-   * @param {Object} metadata - { participant, scenario, color }
    */
-  startRecording(metadata = {}) {
+  startRecording() {
     if (this.isRecording) {
       console.warn('Recording already in progress');
       return;
@@ -39,13 +50,12 @@ export class RecordingManager {
     this.frames = [];
     this.startTime = Date.now();
     this.isRecording = true;
-    this.metadata = {
-      participant: metadata.participant || 'P1',
-      scenario: metadata.scenario || 'S1',
-      color: metadata.color || '#FF5733',
-    };
 
-    console.log('Recording started:', this.metadata);
+    console.log('Recording started for:', {
+      project: this.projectId,
+      option: this.selectedOption?.name,
+      scenario: this.selectedScenario?.name,
+    });
   }
 
   /**
@@ -77,7 +87,7 @@ export class RecordingManager {
 
   /**
    * Stop recording and return the captured data
-   * @returns {Object} Recording data with frames and metadata
+   * @returns {Object} Recording data with frames
    */
   stopRecording() {
     if (!this.isRecording) {
@@ -93,7 +103,6 @@ export class RecordingManager {
     }
 
     const data = {
-      metadata: this.metadata,
       frames: this.frames,
       length: this.frames.length,
       duration: this.frames[this.frames.length - 1].time,
@@ -102,7 +111,6 @@ export class RecordingManager {
     console.log('Recording stopped:', {
       frames: data.length,
       duration: data.duration,
-      ...data.metadata,
     });
 
     return data;
@@ -116,7 +124,6 @@ export class RecordingManager {
       isRecording: this.isRecording,
       frameCount: this.frames.length,
       duration: this.isRecording ? (Date.now() - this.startTime) / 1000 : 0,
-      metadata: this.metadata,
     };
   }
 
@@ -141,20 +148,27 @@ export class RecordingManager {
    */
   exportJSON() {
     return {
-      metadata: this.metadata,
+      metadata: {
+        projectId: this.projectId,
+        optionName: this.selectedOption?.name,
+        scenarioName: this.selectedScenario?.name,
+        timestamp: new Date().toISOString(),
+      },
       frames: this.frames,
     };
   }
 
   /**
-   * Save recording to Supabase storage and update project
-   * @param {Function} onAddRecord - Callback function from useProject hook to add record URL to project
-   * @returns {Promise<Object>} Result with success status and URL or error
+   * Save recording to Supabase storage and database using new schema
+   * @returns {Promise<Object>} Result with success status and record data or error
    */
-  async saveToSupabase(onAddRecord) {
-    if (!this.projectId) {
-      console.error('No project ID set. Call setProjectId() before saving.');
-      return { success: false, error: 'No project ID' };
+  async saveToSupabase() {
+    if (!this.projectId || !this.selectedOption || !this.selectedScenario) {
+      console.error('Missing project, option, or scenario info');
+      return { 
+        success: false, 
+        error: 'Missing project, option, or scenario information' 
+      };
     }
 
     if (this.frames.length === 0) {
@@ -163,49 +177,111 @@ export class RecordingManager {
     }
 
     try {
-      // Create recording data object
-      const recordingData = {
-        metadata: this.metadata,
-        frames: this.frames,
-        length: this.frames.length,
-        duration: this.frames[this.frames.length - 1]?.time || 0,
-        timestamp: new Date().toISOString(),
-      };
-
-      // Convert to JSON blob
-      const jsonString = JSON.stringify(recordingData, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-
-      // Generate recording ID
-      const recordingId = `${this.metadata.participant}_${this.metadata.scenario}_${Date.now()}`;
-
-      // Upload to Supabase storage
-      const { data, error } = await StorageService.uploadRecording(
-        this.projectId,
-        recordingId,
-        blob,
-        'json'
+      // Calculate duration in milliseconds
+      const durationMs = Math.round(
+        (this.frames[this.frames.length - 1]?.time || 0) * 1000
       );
 
-      if (error) {
-        throw error;
+      // Generate file name: optionName_scenarioName_uniqueId
+      const optionName = this.selectedOption.name.replace(/[^a-zA-Z0-9]/g, '_');
+      const scenarioName = this.selectedScenario.name.replace(/[^a-zA-Z0-9]/g, '_');
+      const uniqueId = Date.now();
+      const baseFileName = `${optionName}_${scenarioName}_${uniqueId}`;
+
+      // Create recording data object for GLB export
+      const recordingData = {
+        metadata: {
+          projectId: this.projectId,
+          optionId: this.selectedOption.id,
+          optionName: this.selectedOption.name,
+          scenarioId: this.selectedScenario.id,
+          scenarioName: this.selectedScenario.name,
+          timestamp: new Date().toISOString(),
+          fileName: baseFileName,
+        },
+        frames: this.frames,
+      };
+
+      // Export to GLB blob
+      console.log('Exporting to GLB...');
+      const glbBlob = await GLBExporter.exportToGLB(recordingData);
+      const glbFileName = `${baseFileName}.glb`;
+
+      // Upload GLB to storage
+      console.log('Uploading GLB to storage...');
+      const { data: glbData, error: glbError } = await StorageService.uploadRecording(
+        this.projectId,
+        glbFileName,
+        glbBlob
+      );
+
+      if (glbError) {
+        throw new Error(`GLB upload failed: ${glbError.message}`);
       }
 
-      console.log('Recording uploaded:', data.publicUrl);
+      console.log('GLB uploaded:', glbData.publicUrl);
 
-      // Add record URL to project via callback
-      if (onAddRecord) {
-        const result = await onAddRecord(data.publicUrl);
-        if (!result.success) {
-          console.warn('Failed to update project with recording URL:', result.error);
+      // Optional: Upload raw CSV data
+      let rawUrl = null;
+      try {
+        const csvData = this.framesToCSV();
+        const csvBlob = new Blob([csvData], { type: 'text/csv' });
+        const csvFileName = `${baseFileName}.csv`;
+        
+        const { data: csvData_result, error: csvError } = await StorageService.uploadRawData(
+          this.projectId,
+          csvFileName,
+          csvBlob
+        );
+
+        if (!csvError) {
+          rawUrl = csvData_result.publicUrl;
+          console.log('CSV uploaded:', rawUrl);
         }
+      } catch (csvErr) {
+        console.warn('CSV upload failed (non-critical):', csvErr);
       }
 
-      return { success: true, url: data.publicUrl };
+      // Create record in database
+      console.log('Creating database record...');
+      const { data: record, error: dbError } = await DatabaseService.createRecord({
+        project_id: this.projectId,
+        option_id: this.selectedOption.id,
+        scenario_id: this.selectedScenario.id,
+        record_url: glbData.publicUrl,
+        raw_url: rawUrl,
+        length_ms: durationMs,
+        device_type: this.deviceType,
+      });
+
+      if (dbError) {
+        throw new Error(`Database record creation failed: ${dbError.message}`);
+      }
+
+      console.log('Record created in database:', record.id);
+
+      return { 
+        success: true, 
+        record,
+        glbUrl: glbData.publicUrl,
+        rawUrl 
+      };
     } catch (error) {
       console.error('Error saving recording to Supabase:', error);
       return { success: false, error: error.message };
     }
+  }
+
+  /**
+   * Convert frames to CSV format
+   * @returns {string} CSV data
+   */
+  framesToCSV() {
+    const header = 'time,position_x,position_y,position_z,lookAt_x,lookAt_y,lookAt_z\n';
+    const rows = this.frames.map(frame => {
+      return `${frame.time},${frame.position.x},${frame.position.y},${frame.position.z},${frame.lookAt.x},${frame.lookAt.y},${frame.lookAt.z}`;
+    }).join('\n');
+    return header + rows;
   }
 }
 

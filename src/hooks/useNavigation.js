@@ -24,3 +24,15 @@ export function useProjectId() {
   
   return match ? match[1] : null;
 }
+
+/**
+ * Hook to get URL query parameters
+ * @returns {Object} Object with optionId and scenarioId from URL
+ */
+export function useUrlParams() {
+  const searchParams = new URLSearchParams(window.location.search);
+  return {
+    optionId: searchParams.get('option'),
+    scenarioId: searchParams.get('scenario'),
+  };
+}

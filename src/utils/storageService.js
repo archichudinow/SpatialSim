@@ -2,20 +2,22 @@ import { supabase, BUCKETS } from './supabaseClient';
 
 /**
  * Storage service for managing files in Supabase Storage
+ * All files are stored in the 'projects' bucket with the structure:
+ * projects/{project_id}/models/{files}
+ * projects/{project_id}/records/{files}
  */
 export class StorageService {
   /**
    * Upload a file to Supabase Storage
-   * @param {string} bucket - Bucket name (e.g., 'models' or 'recordings')
    * @param {string} path - File path within the bucket
    * @param {File|Blob} file - File to upload
    * @param {Object} options - Upload options
    * @returns {Promise<Object>} Upload result with public URL
    */
-  static async uploadFile(bucket, path, file, options = {}) {
+  static async uploadFile(path, file, options = {}) {
     try {
       const { data, error } = await supabase.storage
-        .from(bucket)
+        .from(BUCKETS.PROJECTS)
         .upload(path, file, {
           cacheControl: '3600',
           upsert: options.upsert || false,
@@ -26,7 +28,7 @@ export class StorageService {
 
       // Get public URL
       const { data: urlData } = supabase.storage
-        .from(bucket)
+        .from(BUCKETS.PROJECTS)
         .getPublicUrl(path);
 
       return {
@@ -43,41 +45,64 @@ export class StorageService {
   }
 
   /**
-   * Upload a model file (GLB)
+   * Upload a model file (GLB) for a project
    * @param {string} projectId - Project UUID
-   * @param {string} modelType - Type of model ('context', 'project', or 'heatmap')
+   * @param {string} modelType - Type of model ('context', 'option', or 'heatmap')
    * @param {File|Blob} file - Model file
+   * @param {string} [fileName] - Optional custom file name
    * @returns {Promise<Object>} Upload result
    */
-  static async uploadModel(projectId, modelType, file) {
-    const path = `${projectId}/${modelType}.glb`;
-    return await this.uploadFile(BUCKETS.MODELS, path, file, { upsert: true });
+  static async uploadModel(projectId, modelType, file, fileName = null) {
+    const name = fileName || `${modelType}_model.glb`;
+    const path = `${projectId}/models/${name}`;
+    return await this.uploadFile(path, file, { upsert: true });
   }
 
   /**
-   * Upload a recording file
+   * Upload a recording file to storage
    * @param {string} projectId - Project UUID
-   * @param {string} recordingId - Recording identifier
-   * @param {File|Blob} file - Recording data (JSON or binary)
-   * @param {string} format - File format extension (e.g., 'json')
+   * @param {string} fileName - File name (should follow format: optionName_scenarioName_uniqueId.glb)
+   * @param {File|Blob} file - Recording GLB file
    * @returns {Promise<Object>} Upload result
    */
-  static async uploadRecording(projectId, recordingId, file, format = 'json') {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const path = `${projectId}/${recordingId}_${timestamp}.${format}`;
-    return await this.uploadFile(BUCKETS.RECORDINGS, path, file);
+  static async uploadRecording(projectId, fileName, file) {
+    const path = `${projectId}/records/${fileName}`;
+    return await this.uploadFile(path, file);
+  }
+
+  /**
+   * Upload raw data file (CSV) for a recording
+   * @param {string} projectId - Project UUID
+   * @param {string} fileName - File name (should follow format: optionName_scenarioName_uniqueId.csv)
+   * @param {File|Blob} file - Raw data CSV file
+   * @returns {Promise<Object>} Upload result
+   */
+  static async uploadRawData(projectId, fileName, file) {
+    const path = `${projectId}/records/${fileName}`;
+    return await this.uploadFile(path, file);
+  }
+
+  /**
+   * Upload raw data file (CSV) for a recording
+   * @param {string} projectId - Project UUID
+   * @param {string} fileName - File name (should follow format: optionName_scenarioName_uniqueId.csv)
+   * @param {File|Blob} file - Raw data CSV file
+   * @returns {Promise<Object>} Upload result
+   */
+  static async uploadRawData(projectId, fileName, file) {
+    const path = `${projectId}/records/${fileName}`;
+    return await this.uploadFile(path, file);
   }
 
   /**
    * Download a file from storage
-   * @param {string} bucket - Bucket name
    * @param {string} path - File path within the bucket
    * @returns {Promise<Object>} File blob
    */
-  static async downloadFile(bucket, path) {
+  static async downloadFile(path) {
     try {
       const { data, error } = await supabase.storage
-        .from(bucket)
+        .from(BUCKETS.PROJECTS)
         .download(path);
 
       if (error) throw error;
@@ -90,28 +115,28 @@ export class StorageService {
 
   /**
    * Get public URL for a file
-   * @param {string} bucket - Bucket name
    * @param {string} path - File path within the bucket
    * @returns {string} Public URL
    */
-  static getPublicUrl(bucket, path) {
+  static getPublicUrl(path) {
     const { data } = supabase.storage
-      .from(bucket)
+      .from(BUCKETS.PROJECTS)
       .getPublicUrl(path);
     
     return data.publicUrl;
   }
 
   /**
-   * List files in a bucket path
-   * @param {string} bucket - Bucket name
-   * @param {string} path - Folder path to list
+   * List files in a project folder
+   * @param {string} projectId - Project UUID
+   * @param {string} folder - Folder name ('models' or 'records')
    * @returns {Promise<Object>} List of files
    */
-  static async listFiles(bucket, path = '') {
+  static async listFiles(projectId, folder = 'records') {
     try {
+      const path = `${projectId}/${folder}`;
       const { data, error } = await supabase.storage
-        .from(bucket)
+        .from(BUCKETS.PROJECTS)
         .list(path, {
           limit: 100,
           offset: 0,
@@ -128,71 +153,19 @@ export class StorageService {
 
   /**
    * Delete a file from storage
-   * @param {string} bucket - Bucket name
    * @param {string} path - File path within the bucket
    * @returns {Promise<Object>} Deletion result
    */
-  static async deleteFile(bucket, path) {
+  static async deleteFile(path) {
     try {
       const { data, error } = await supabase.storage
-        .from(bucket)
+        .from(BUCKETS.PROJECTS)
         .remove([path]);
 
       if (error) throw error;
       return { data, error: null };
     } catch (error) {
       console.error('Error deleting file:', error);
-      return { data: null, error };
-    }
-  }
-
-  /**
-   * Delete all files in a project folder
-   * @param {string} projectId - Project UUID
-   * @param {string} bucket - Bucket name
-   * @returns {Promise<Object>} Deletion result
-   */
-  static async deleteProjectFiles(projectId, bucket) {
-    try {
-      // List all files for the project
-      const { data: files, error: listError } = await this.listFiles(bucket, projectId);
-      if (listError) throw listError;
-
-      if (!files || files.length === 0) {
-        return { data: true, error: null };
-      }
-
-      // Delete all files
-      const filePaths = files.map(file => `${projectId}/${file.name}`);
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .remove(filePaths);
-
-      if (error) throw error;
-      return { data, error: null };
-    } catch (error) {
-      console.error('Error deleting project files:', error);
-      return { data: null, error };
-    }
-  }
-
-  /**
-   * Create a signed URL for temporary access to a private file
-   * @param {string} bucket - Bucket name
-   * @param {string} path - File path within the bucket
-   * @param {number} expiresIn - Expiration time in seconds (default: 60)
-   * @returns {Promise<Object>} Signed URL
-   */
-  static async createSignedUrl(bucket, path, expiresIn = 60) {
-    try {
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .createSignedUrl(path, expiresIn);
-
-      if (error) throw error;
-      return { data, error: null };
-    } catch (error) {
-      console.error('Error creating signed URL:', error);
       return { data: null, error };
     }
   }

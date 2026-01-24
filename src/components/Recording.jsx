@@ -6,29 +6,21 @@ import './Recording.css';
 // Global state for visualization (shared with Scene)
 let visualizationState = false;
 
-export function Recording({ project, onAddRecord }) {
+export function Recording({ project, selectedOption, selectedScenario, onReload, isVRMode }) {
   const [isRecording, setIsRecording] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
   const [showVisualization, setShowVisualization] = useState(false);
 
-  // Recording metadata
-  const [settings, setSettings] = useState({
-    participant: 'P1',
-    scenario: 'S1',
-    color: '#FF5733',
-  });
-
-  // Set project ID when component mounts or project changes
+  // Set project, option, and scenario IDs when they change
   useEffect(() => {
-    if (project?.id) {
-      recordingManager.setProjectId(project.id);
+    if (project?.id && selectedOption?.id && selectedScenario?.id) {
+      recordingManager.setProjectInfo(project.id, selectedOption, selectedScenario);
     }
-  }, [project?.id]);
+  }, [project?.id, selectedOption?.id, selectedScenario?.id]);
 
   // Update recording status periodically
   useEffect(() => {
@@ -44,7 +36,11 @@ export function Recording({ project, onAddRecord }) {
   }, [isRecording]);
 
   const handleStartRecording = () => {
-    recordingManager.startRecording(settings);
+    if (!selectedScenario) {
+      setExportStatus('❌ No scenario selected');
+      return;
+    }
+    recordingManager.startRecording();
     setIsRecording(true);
     setFrameCount(0);
     setDuration(0);
@@ -71,7 +67,20 @@ export function Recording({ project, onAddRecord }) {
 
     try {
       const glbBlob = await GLBExporter.exportToGLB(data);
-      GLBExporter.downloadGLB(glbBlob, data.metadata);
+      
+      // Generate file name based on option and scenario
+      const optionName = selectedOption?.name || 'option';
+      const scenarioName = selectedScenario?.name || 'scenario';
+      const uniqueId = Date.now();
+      const fileName = `${optionName}_${scenarioName}_${uniqueId}`;
+      
+      GLBExporter.downloadGLB(glbBlob, { 
+        ...data.metadata, 
+        optionName, 
+        scenarioName,
+        fileName 
+      });
+      
       setExportStatus('✅ GLB exported successfully');
 
       // Reset after successful export
@@ -90,8 +99,8 @@ export function Recording({ project, onAddRecord }) {
   };
 
   const handleSaveToSupabase = async () => {
-    if (!project?.id) {
-      setExportStatus('❌ No project loaded');
+    if (!project?.id || !selectedOption?.id || !selectedScenario?.id) {
+      setExportStatus('❌ Missing project, option, or scenario');
       return;
     }
 
@@ -104,7 +113,7 @@ export function Recording({ project, onAddRecord }) {
     setExportStatus('⏳ Saving to database...');
 
     try {
-      const result = await recordingManager.saveToSupabase(onAddRecord);
+      const result = await recordingManager.saveToSupabase();
       
       if (result.success) {
         setExportStatus(`✅ Saved to database`);
@@ -134,103 +143,27 @@ export function Recording({ project, onAddRecord }) {
     setExportStatus('');
   };
 
-  const handleSettingChange = (field, value) => {
-    setSettings((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
   const handleVisualizationToggle = (checked) => {
     setShowVisualization(checked);
     visualizationState = checked;
   };
-
-  const participantOptions = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'];
-  const scenarioOptions = ['S1', 'S1A', 'S1B', 'S2', 'S3', 'S4'];
-  const colorOptions = [
-    '#FF5733', // P1 - Red/Orange
-    '#33FF57', // P2 - Green
-    '#3357FF', // P3 - Blue
-    '#FF33F5', // P4 - Magenta
-    '#F5FF33', // P5 - Yellow
-    '#33FFF5', // P6 - Cyan
-    '#FF8C33', // P7 - Orange
-    '#8C33FF', // P8 - Purple
-    '#33FF8C', // P9 - Light Green
-    '#FF3333', // P10 - Red
-  ];
 
   return (
     <div className="recording-panel">
       {project && (
         <div className="project-info">
           <h4>{project.name}</h4>
-          {project.description && <p>{project.description}</p>}
+          {selectedOption && (
+            <p className="text-xs text-text-muted">
+              {selectedOption.name} {selectedScenario && `• ${selectedScenario.name}`}
+            </p>
+          )}
         </div>
       )}
 
       <div className="recording-header">
         <h3>Recording Control</h3>
-        <button
-          className="settings-toggle"
-          onClick={() => setShowSettings(!showSettings)}
-          disabled={isRecording}
-          title="Recording settings"
-        >
-          Settings
-        </button>
       </div>
-
-      {showSettings && !isRecording && (
-        <div className="recording-settings">
-          <div className="setting-group">
-            <label>Participant:</label>
-            <select
-              value={settings.participant}
-              onChange={(e) => handleSettingChange('participant', e.target.value)}
-            >
-              {participantOptions.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="setting-group">
-            <label>Scenario:</label>
-            <select
-              value={settings.scenario}
-              onChange={(e) => handleSettingChange('scenario', e.target.value)}
-            >
-              {scenarioOptions.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="setting-group">
-            <label>Color:</label>
-            <select
-              value={settings.color}
-              onChange={(e) => handleSettingChange('color', e.target.value)}
-            >
-              {colorOptions.map((color) => (
-                <option key={color} value={color}>
-                  <span style={{ color }}>●</span> {color}
-                </option>
-              ))}
-            </select>
-            <div
-              className="color-preview"
-              style={{ backgroundColor: settings.color }}
-            />
-          </div>
-        </div>
-      )}
 
       <div className="recording-stats">
         <div className="stat">
@@ -242,13 +175,21 @@ export function Recording({ project, onAddRecord }) {
           <span className="stat-value">{duration.toFixed(1)}s</span>
         </div>
         <div className="stat">
-          <span className="stat-label">Participant:</span>
-          <span className="stat-value">{settings.participant}</span>
+          <span className="stat-label">Mode:</span>
+          <span className="stat-value">{isVRMode ? 'VR' : 'PC'}</span>
         </div>
-        <div className="stat">
-          <span className="stat-label">Scenario:</span>
-          <span className="stat-value">{settings.scenario}</span>
-        </div>
+        {selectedOption && (
+          <div className="stat">
+            <span className="stat-label">Option:</span>
+            <span className="stat-value">{selectedOption.name}</span>
+          </div>
+        )}
+        {selectedScenario && (
+          <div className="stat">
+            <span className="stat-label">Scenario:</span>
+            <span className="stat-value">{selectedScenario.name}</span>
+          </div>
+        )}
       </div>
 
       <div className="visualization-toggle">

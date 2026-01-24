@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { Scene } from './components/Scene';
 import { ProjectList } from './components/ProjectList';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { useProjectId } from './hooks/useNavigation';
+import { useProjectId, useUrlParams } from './hooks/useNavigation';
 import { useProject } from './hooks/useProject';
 import './App.css';
 
 function App() {
   const [projectId, setProjectId] = useState(useProjectId());
+  const urlParams = useUrlParams();
 
   // Listen for navigation changes
   useEffect(() => {
@@ -19,8 +20,18 @@ function App() {
     return () => window.removeEventListener('popstate', handleNavigation);
   }, []);
 
-  // Load project data
-  const { project, projects, loading, error, addRecord } = useProject(projectId);
+  // Load project data with URL parameters
+  const { 
+    project, 
+    projects, 
+    selectedOption, 
+    selectedScenario, 
+    loading, 
+    error, 
+    selectOption,
+    selectScenario,
+    reload 
+  } = useProject(projectId, urlParams.optionId, urlParams.scenarioId);
 
   // If projectId exists, show Scene with loaded project
   if (projectId) {
@@ -28,9 +39,13 @@ function App() {
       <ErrorBoundary>
         <Scene 
           project={project} 
+          selectedOption={selectedOption}
+          selectedScenario={selectedScenario}
           loading={loading} 
           error={error}
-          onAddRecord={addRecord}
+          onOptionChange={selectOption}
+          onScenarioChange={selectScenario}
+          onReload={reload}
         />
       </ErrorBoundary>
     );

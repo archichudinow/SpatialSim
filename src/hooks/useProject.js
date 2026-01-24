@@ -2,13 +2,17 @@ import { useState, useEffect } from 'react';
 import DatabaseService from '../utils/databaseService';
 
 /**
- * Hook to load and manage project data
+ * Hook to load and manage project data with full hierarchy (options, scenarios, records)
  * @param {string|null} projectId - Project UUID from URL, or null to list all projects
+ * @param {string|null} urlOptionId - Option ID from URL query params
+ * @param {string|null} urlScenarioId - Scenario ID from URL query params
  * @returns {Object} Project data, loading state, and utility functions
  */
-export function useProject(projectId = null) {
+export function useProject(projectId = null, urlOptionId = null, urlScenarioId = null) {
   const [project, setProject] = useState(null);
   const [projects, setProjects] = useState([]);
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [selectedScenario, setSelectedScenario] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -16,13 +20,45 @@ export function useProject(projectId = null) {
     loadProjectData();
   }, [projectId]);
 
+  // Auto-select option and scenario when project loads
+  useEffect(() => {
+    if (project && project.options && project.options.length > 0) {
+      // Priority: URL param > default option > first option
+      let targetOption;
+      if (urlOptionId) {
+        targetOption = project.options.find(opt => opt.id === urlOptionId);
+      }
+      if (!targetOption) {
+        targetOption = project.options.find(opt => opt.is_default) || project.options[0];
+      }
+      setSelectedOption(targetOption);
+
+      // Select scenario: URL param > first scenario
+      if (targetOption.scenarios && targetOption.scenarios.length > 0) {
+        let targetScenario;
+        if (urlScenarioId) {
+          targetScenario = targetOption.scenarios.find(sc => sc.id === urlScenarioId);
+        }
+        if (!targetScenario) {
+          targetScenario = targetOption.scenarios[0];
+        }
+        setSelectedScenario(targetScenario);
+      } else {
+        setSelectedScenario(null);
+      }
+    } else {
+      setSelectedOption(null);
+      setSelectedScenario(null);
+    }
+  }, [project, urlOptionId, urlScenarioId]);
+
   const loadProjectData = async () => {
     setLoading(true);
     setError(null);
 
     try {
       if (projectId) {
-        // Load specific project
+        // Load specific project with full hierarchy
         const { data, error: fetchError } = await DatabaseService.getProject(projectId);
         
         if (fetchError) {
@@ -36,7 +72,7 @@ export function useProject(projectId = null) {
         setProject(data);
         setProjects([]);
       } else {
-        // Load all projects for list view
+        // Load all projects for list view (excluding archived)
         const { data, error: fetchError } = await DatabaseService.getProjects();
         
         if (fetchError) {
@@ -55,32 +91,25 @@ export function useProject(projectId = null) {
   };
 
   /**
-   * Add a new recording to the current project
-   * @param {string} recordUrl - URL of the recording
+   * Select a specific option
+   * @param {Object} option - Option object
    */
-  const addRecord = async (recordUrl) => {
-    if (!projectId) {
-      console.error('Cannot add record without a project ID');
-      return { success: false, error: 'No project loaded' };
+  const selectOption = (option) => {
+    setSelectedOption(option);
+    // Auto-select first scenario of new option
+    if (option.scenarios && option.scenarios.length > 0) {
+      setSelectedScenario(option.scenarios[0]);
+    } else {
+      setSelectedScenario(null);
     }
+  };
 
-    try {
-      const { data, error: updateError } = await DatabaseService.addRecordToProject(
-        projectId,
-        recordUrl
-      );
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      // Update local state
-      setProject(data);
-      return { success: true, data };
-    } catch (err) {
-      console.error('Error adding record:', err);
-      return { success: false, error: err.message };
-    }
+  /**
+   * Select a specific scenario
+   * @param {Object} scenario - Scenario object
+   */
+  const selectScenario = (scenario) => {
+    setSelectedScenario(scenario);
   };
 
   /**
@@ -93,15 +122,20 @@ export function useProject(projectId = null) {
   return {
     project,
     projects,
+    selectedOption,
+    selectedScenario,
     loading,
     error,
-    addRecord,
+    selectOption,
+    selectScenario,
     reload,
     // Computed properties
-    hasContextModel: project?.models_context != null,
-    hasProjectModel: project?.models_project != null,
+    hasContextModel: project?.models_context != null && project.models_context.length > 0,
     hasHeatmapModel: project?.models_heatmap != null,
-    recordCount: project?.records?.length || 0,
+    hasOptions: project?.options && project.options.length > 0,
+    optionCount: project?.options?.length || 0,
+    scenarioCount: selectedOption?.scenarios?.length || 0,
+    recordCount: selectedScenario?.records?.length || 0,
   };
 }
 

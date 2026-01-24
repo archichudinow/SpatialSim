@@ -17,10 +17,12 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
 // Database table names
 export const TABLES = {
   PROJECTS: 'projects',
+  PROJECT_OPTIONS: 'project_options',
+  SCENARIOS: 'scenarios',
+  RECORDS: 'records',
 };
 
 // Storage bucket names
 export const BUCKETS = {
-  MODELS: 'models',
-  RECORDINGS: 'recordings',
+  PROJECTS: 'projects',
 };

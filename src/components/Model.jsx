@@ -199,7 +199,11 @@ function ModelContent({ url, ref }) {
 }
 
 export const Model = forwardRef((props, ref) => {
-  const { url = '/models/schiphol.glb' } = props;
+  const { url } = props;
+  
+  if (!url) {
+    return null;
+  }
   
   return (
     <Suspense fallback={null}>
@@ -207,9 +211,6 @@ export const Model = forwardRef((props, ref) => {
     </Suspense>
   );
 });
-
-// Preload default model
-useGLTF.preload('/models/schiphol.glb');
 
 
 

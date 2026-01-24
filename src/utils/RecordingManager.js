@@ -147,14 +147,22 @@ export class RecordingManager {
    * Export raw frame data as JSON (for debugging/validation)
    */
   exportJSON() {
+    const optionName = this.selectedOption?.name || 'Unknown_Option';
+    const scenarioName = this.selectedScenario?.name || 'Unknown_Scenario';
+    
     return {
       metadata: {
         projectId: this.projectId,
         optionName: this.selectedOption?.name,
         scenarioName: this.selectedScenario?.name,
         timestamp: new Date().toISOString(),
+        // Required by GLBExporter
+        participant: optionName.replace(/[^a-zA-Z0-9]/g, '_'),
+        scenario: scenarioName.replace(/[^a-zA-Z0-9]/g, '_'),
+        color: '#3b82f6', // Default blue color
       },
       frames: this.frames,
+      length: this.frames.length,
     };
   }
 
@@ -198,8 +206,13 @@ export class RecordingManager {
           scenarioName: this.selectedScenario.name,
           timestamp: new Date().toISOString(),
           fileName: baseFileName,
+          // Required by GLBExporter
+          participant: optionName,
+          scenario: scenarioName,
+          color: '#3b82f6', // Default blue color
         },
         frames: this.frames,
+        length: this.frames.length,
       };
 
       // Export to GLB blob

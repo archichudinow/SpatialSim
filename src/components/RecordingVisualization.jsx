@@ -14,6 +14,7 @@ export function RecordingVisualization({ showVisualization }) {
   const lookAtPointsRef = useRef(null);
   const lineRef = useRef(null);
   const lastFrameCountRef = useRef(0);
+  const TRAIL_DURATION = 5000; // Points disappear after 5 seconds
 
   // Create visualization geometries
   useEffect(() => {
@@ -83,7 +84,7 @@ export function RecordingVisualization({ showVisualization }) {
     };
   }, [showVisualization, scene]);
 
-  // Update visualization with new frames
+  // Update visualization with new frames (incremental updates)
   useEffect(() => {
     if (!showVisualization || !groupRef.current) return;
 
@@ -92,9 +93,8 @@ export function RecordingVisualization({ showVisualization }) {
       const currentFrameCount = frames.length;
 
       // Only update if new frames were added
-      if (currentFrameCount === lastFrameCountRef.current) {
-        return;
-      }
+      if (currentFrameCount === lastFrameCountRef.current) return;
+      
       lastFrameCountRef.current = currentFrameCount;
 
       if (currentFrameCount === 0) {
@@ -114,32 +114,45 @@ export function RecordingVisualization({ showVisualization }) {
         return;
       }
 
-      // Build position points array
-      const positionArray = new Float32Array(currentFrameCount * 3);
-      const lookAtArray = new Float32Array(currentFrameCount * 3);
-      const lineArray = [];
+      // Filter frames to only show recent ones (trailing effect)
+      const now = Date.now();
+      const recordingStart = recordingManager.startTime;
+      const visibleFrames = frames.filter(frame => {
+        const frameAge = now - (recordingStart + frame.time * 1000);
+        return frameAge < TRAIL_DURATION;
+      });
 
-      frames.forEach((frame, index) => {
+      const visibleCount = visibleFrames.length;
+      if (visibleCount === 0) return;
+
+      // Build arrays for visible frames only
+      const positionArray = new Float32Array(visibleCount * 3);
+      const lookAtArray = new Float32Array(visibleCount * 3);
+      const lineArray = new Float32Array(visibleCount * 6);
+
+      for (let i = 0; i < visibleCount; i++) {
+        const frame = visibleFrames[i];
+        const i3 = i * 3;
+        const i6 = i * 6;
+
         // Position points
-        positionArray[index * 3] = frame.position.x;
-        positionArray[index * 3 + 1] = frame.position.y;
-        positionArray[index * 3 + 2] = frame.position.z;
+        positionArray[i3] = frame.position.x;
+        positionArray[i3 + 1] = frame.position.y;
+        positionArray[i3 + 2] = frame.position.z;
 
         // LookAt points
-        lookAtArray[index * 3] = frame.lookAt.x;
-        lookAtArray[index * 3 + 1] = frame.lookAt.y;
-        lookAtArray[index * 3 + 2] = frame.lookAt.z;
+        lookAtArray[i3] = frame.lookAt.x;
+        lookAtArray[i3 + 1] = frame.lookAt.y;
+        lookAtArray[i3 + 2] = frame.lookAt.z;
 
-        // Gaze direction lines (from position to lookAt)
-        lineArray.push(
-          frame.position.x,
-          frame.position.y,
-          frame.position.z,
-          frame.lookAt.x,
-          frame.lookAt.y,
-          frame.lookAt.z
-        );
-      });
+        // Gaze direction lines
+        lineArray[i6] = frame.position.x;
+        lineArray[i6 + 1] = frame.position.y;
+        lineArray[i6 + 2] = frame.position.z;
+        lineArray[i6 + 3] = frame.lookAt.x;
+        lineArray[i6 + 4] = frame.lookAt.y;
+        lineArray[i6 + 5] = frame.lookAt.z;
+      }
 
       // Update position points
       if (positionPointsRef.current) {
@@ -158,15 +171,15 @@ export function RecordingVisualization({ showVisualization }) {
       }
 
       // Update gaze direction lines
-      if (lineRef.current && lineArray.length > 0) {
+      if (lineRef.current) {
         lineRef.current.geometry.dispose();
         const lineGeometry = new THREE.BufferGeometry();
-        lineGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(lineArray), 3));
+        lineGeometry.setAttribute('position', new THREE.BufferAttribute(lineArray, 3));
         lineRef.current.geometry = lineGeometry;
       }
     };
 
-    const interval = setInterval(updateVisualization, 100); // Update every 100ms
+    const interval = setInterval(updateVisualization, 250); // Update every 250ms
     updateVisualization(); // Initial update
 
     return () => clearInterval(interval);

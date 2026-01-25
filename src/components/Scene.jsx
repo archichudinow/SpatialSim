@@ -13,56 +13,99 @@ import recordingManager from '../utils/RecordingManager';
 import StorageService from '../utils/storageService';
 import * as THREE from 'three';
 
-function FrameCapture({ modelRef }) {
+function FrameCapture({ modelRef, contextModelRef }) {
   const { camera, scene } = useThree();
   const raycasterRef = useRef(new THREE.Raycaster());
-  const meshesToTestRef = useRef([]);
+  const optionMeshesRef = useRef([]);
+  const allMeshesRef = useRef([]);
+  const meshCacheCompleteRef = useRef(false);
+  const frameCounterRef = useRef(0);
 
-  // Cache the meshes once when model loads
+  // Cache meshes - stop updating once we have them
   useEffect(() => {
-    if (modelRef.current) {
-      const meshes = [];
-      modelRef.current.traverse((obj) => {
-        if (obj.isMesh && obj.geometry) {
-          meshes.push(obj);
-        }
-      });
-      meshesToTestRef.current = meshes;
-    }
-  }, [modelRef]);
+    const updateMeshCache = () => {
+      // Skip if we already have meshes
+      if (meshCacheCompleteRef.current) return;
+
+      const optionMeshes = [];
+      const allMeshes = [];
+
+      // Collect option model meshes (priority)
+      if (modelRef?.current) {
+        modelRef.current.traverse((obj) => {
+          if (obj.isMesh && obj.geometry) {
+            optionMeshes.push(obj);
+            allMeshes.push(obj);
+          }
+        });
+      }
+
+      // Collect context model meshes (fallback)
+      if (contextModelRef?.current) {
+        contextModelRef.current.traverse((obj) => {
+          if (obj.isMesh && obj.geometry) {
+            allMeshes.push(obj);
+          }
+        });
+      }
+
+      // Update cache and mark as complete if we found meshes
+      if (optionMeshes.length > 0 || allMeshes.length > 0) {
+        optionMeshesRef.current = optionMeshes;
+        allMeshesRef.current = allMeshes;
+        meshCacheCompleteRef.current = true;
+      }
+    };
+
+    updateMeshCache();
+    const interval = setInterval(() => {
+      if (!meshCacheCompleteRef.current) updateMeshCache();
+    }, 500);
+    
+    return () => clearInterval(interval);
+  }, [modelRef, contextModelRef]);
 
   useFrame(() => {
     if (!recordingManager.isRecording) return;
+    if (!meshCacheCompleteRef.current) return;
+
+    // Throttle to every 2nd frame for performance (30fps recording instead of 60fps)
+    frameCounterRef.current++;
+    if (frameCounterRef.current % 2 !== 0) return;
 
     // Position = camera position (gaze origin)
-    const position = camera.position.clone();
+    const position = camera.position;
 
     // LookAt = where the gaze is hitting
-    // Cast a ray from camera in look direction
     const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
     
-    // Set up raycaster
-    raycasterRef.current.setFromCamera({ x: 0, y: 0 }, camera);
-    raycasterRef.current.ray.direction.copy(direction).normalize();
+    // Set up raycaster from camera origin and direction
+    const raycaster = raycasterRef.current;
+    raycaster.ray.origin.copy(position);
+    raycaster.ray.direction.copy(direction).normalize();
 
     let lookAt;
     
-    // Use cached meshes for raycasting
-    if (meshesToTestRef.current.length > 0) {
-      const intersects = raycasterRef.current.intersectObjects(meshesToTestRef.current, false);
-
+    // Priority 1: Test option/project model first
+    if (optionMeshesRef.current.length > 0) {
+      const intersects = raycaster.intersectObjects(optionMeshesRef.current, false);
       if (intersects.length > 0) {
-        // Hit something - use the intersection point
-        lookAt = intersects[0].point.clone();
-      } else {
-        // No hit - use far point (100m away in gaze direction)
-        const FAR_DISTANCE = 100;
-        lookAt = position.clone().add(direction.clone().multiplyScalar(FAR_DISTANCE));
+        lookAt = intersects[0].point;
       }
-    } else {
-      // Fallback if model not loaded yet
+    }
+
+    // Priority 2: If no hit on option model, test all meshes
+    if (!lookAt && allMeshesRef.current.length > 0) {
+      const intersects = raycaster.intersectObjects(allMeshesRef.current, false);
+      if (intersects.length > 0) {
+        lookAt = intersects[0].point;
+      }
+    }
+
+    // Fallback: No hit - use far point
+    if (!lookAt) {
       const FAR_DISTANCE = 100;
-      lookAt = position.clone().add(direction.clone().multiplyScalar(FAR_DISTANCE));
+      lookAt = new THREE.Vector3().copy(position).add(direction.multiplyScalar(FAR_DISTANCE));
     }
 
     recordingManager.recordFrame(position, lookAt);
@@ -116,7 +159,7 @@ function SceneContent({ project, selectedOption }) {
       {optionModelUrl && <Model ref={modelRef} url={optionModelUrl} />}
       
       <Controls />
-      <FrameCapture modelRef={modelRef} />
+      <FrameCapture modelRef={modelRef} contextModelRef={contextModelRef} />
       <RecordingVisualization showVisualization={showViz} />
     </>
   );

@@ -10,6 +10,7 @@ import { Recording, getVisualizationState } from './Recording';
 import { RecordingVisualization } from './RecordingVisualization';
 import { LoadingScreen } from './LoadingScreen';
 import recordingManager from '../utils/RecordingManager';
+import StorageService from '../utils/storageService';
 import * as THREE from 'three';
 
 function FrameCapture({ modelRef }) {
@@ -83,11 +84,22 @@ function SceneContent({ project, selectedOption }) {
     return () => clearInterval(checkViz);
   }, []);
 
-  // Get context models (array)
+  // Helper to convert storage path to public URL
+  const getModelUrl = (path) => {
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+    
+    // Remove 'projects/' prefix if it exists (to avoid duplication)
+    const cleanPath = path.startsWith('projects/') ? path.substring('projects/'.length) : path;
+    return StorageService.getPublicUrl(cleanPath);
+  };
+
+  // Get context models (array) and convert storage paths to public URLs
   const contextModels = project?.models_context || [];
+  const contextModelUrls = contextModels.map(getModelUrl).filter(Boolean);
   
-  // Get option model URL from selected option
-  const optionModelUrl = selectedOption?.model_url || null;
+  // Get option model URL from selected option and convert if needed
+  const optionModelUrl = getModelUrl(selectedOption?.model_url);
 
   return (
     <>
@@ -96,7 +108,7 @@ function SceneContent({ project, selectedOption }) {
       <Ground />
       
       {/* Load context models if they exist */}
-      {contextModels.length > 0 && contextModels.map((url, index) => (
+      {contextModelUrls.length > 0 && contextModelUrls.map((url, index) => (
         <Model key={`context-${index}`} ref={index === 0 ? contextModelRef : null} url={url} />
       ))}
       

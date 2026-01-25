@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "update-db-types": "curl -o src/types/database.ts https://raw.githubusercontent.com/archichudinow/spatial-lens-db/main/supabase/types.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

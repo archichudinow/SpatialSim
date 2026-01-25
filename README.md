@@ -155,7 +155,63 @@ public/
 
 ## Environment Variables
 
-None required for basic functionality. All assets are in the `public/` folder.
+Create a `.env` file in the project root with your Supabase credentials:
+
+```env
+VITE_SUPABASE_URL=https://piibdadcmkrmvbiapglz.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+```
+
+Get your credentials from your Supabase project dashboard.
+
+## Database & Storage
+
+This app uses the [spatial-lens-db](https://github.com/archichudinow/spatial-lens-db) Supabase database.
+
+### TypeScript Types
+
+Database types are automatically synced from the database repository. The Supabase client is fully typed for better developer experience:
+
+```typescript
+// Types are imported from src/types/database.ts
+import { supabase } from './utils/supabaseClient'
+
+// Type-safe queries with autocomplete
+const { data } = await supabase
+  .from('projects')  // ← Autocomplete for table names
+  .select('*')       // ← Type checking for columns
+```
+
+To update types when the database schema changes:
+```bash
+npm run update-db-types
+```
+
+### Hierarchical Storage Structure
+
+All files are stored with a hierarchical organization:
+```
+projects/{project_name}_{project_id}/
+  ├── options/{option_id}/model_{timestamp}.glb
+  ├── records/
+  │   ├── records_glb/{option_id}/{scenario_id}/processed_recording_{timestamp}.glb
+  │   └── records_csv/{option_id}/{scenario_id}/raw_recording_{timestamp}.json
+  └── others/context_{timestamp}.glb, heatmap_{timestamp}.glb
+```
+
+### Recording Upload Flow
+
+1. **Client**: User records session → GLB/CSV generated
+2. **Edge Function**: Handles path generation & secure upload
+3. **Database**: Record created with proper file references
+
+All uploads go through Edge Functions (no direct storage access). This ensures:
+- ✅ Consistent hierarchical paths
+- ✅ Service-role authentication
+- ✅ Atomic database record creation
+- ✅ Proper validation and error handling
+
+For more details, see the [storage guide](https://github.com/archichudinow/spatial-lens-db/blob/main/STORAGE_GUIDE.md).
 
 ## License
 

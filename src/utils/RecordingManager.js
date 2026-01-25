@@ -1,10 +1,11 @@
 /**
  * RecordingManager - Captures position and lookAt (hit point) data in real-time
- * Stores frames with timestamps for GLB export and saves to new database schema
+ * Uses Supabase Edge Functions for secure uploads with hierarchical storage structure
+ * 
+ * Storage structure: projects/{project_name}_{project_id}/records/...
+ * All uploads go through Edge Functions (no direct storage access)
  */
 
-import StorageService from './storageService';
-import DatabaseService from './databaseService';
 import GLBExporter from './GLBExporter';
 
 export class RecordingManager {
@@ -167,7 +168,8 @@ export class RecordingManager {
   }
 
   /**
-   * Save recording to Supabase storage and database using new schema
+   * Save recording using Supabase Edge Function
+   * Uploads via Edge Function which handles hierarchical storage paths automatically
    * @returns {Promise<Object>} Result with success status and record data or error
    */
   async saveToSupabase() {
@@ -185,16 +187,13 @@ export class RecordingManager {
     }
 
     try {
-      // Calculate duration in milliseconds
       const durationMs = Math.round(
         (this.frames[this.frames.length - 1]?.time || 0) * 1000
       );
 
-      // Generate file name: optionName_scenarioName_uniqueId
+      // Generate file names
       const optionName = this.selectedOption.name.replace(/[^a-zA-Z0-9]/g, '_');
       const scenarioName = this.selectedScenario.name.replace(/[^a-zA-Z0-9]/g, '_');
-      const uniqueId = Date.now();
-      const baseFileName = `${optionName}_${scenarioName}_${uniqueId}`;
 
       // Create recording data object for GLB export
       const recordingData = {
@@ -205,82 +204,72 @@ export class RecordingManager {
           scenarioId: this.selectedScenario.id,
           scenarioName: this.selectedScenario.name,
           timestamp: new Date().toISOString(),
-          fileName: baseFileName,
-          // Required by GLBExporter
           participant: optionName,
           scenario: scenarioName,
-          color: '#3b82f6', // Default blue color
+          color: '#3b82f6', // Default color
         },
         frames: this.frames,
         length: this.frames.length,
       };
 
-      // Export to GLB blob
+      // Export to GLB blob (client-side using Three.js)
       console.log('Exporting to GLB...');
       const glbBlob = await GLBExporter.exportToGLB(recordingData);
-      const glbFileName = `${baseFileName}.glb`;
 
-      // Upload GLB to storage
-      console.log('Uploading GLB to storage...');
-      const { data: glbData, error: glbError } = await StorageService.uploadRecording(
-        this.projectId,
-        glbFileName,
-        glbBlob
+      // Generate CSV blob
+      const csvData = this.framesToCSV();
+      const csvBlob = new Blob([csvData], { type: 'text/csv' });
+
+      // Prepare FormData for Edge Function
+      const formData = new FormData();
+      formData.append('projectId', this.projectId);
+      formData.append('optionId', this.selectedOption.id);
+      formData.append('scenarioId', this.selectedScenario.id);
+      formData.append('optionName', this.selectedOption.name);
+      formData.append('scenarioName', this.selectedScenario.name);
+      formData.append('deviceType', this.deviceType);
+      formData.append('durationMs', durationMs.toString());
+      formData.append('glbFile', glbBlob, 'recording.glb');
+      formData.append('csvFile', csvBlob, 'recording.csv');
+
+      // Get Supabase URL and anon key from environment
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl) {
+        throw new Error('Supabase URL not configured');
+      }
+
+      // Call Edge Function (handles hierarchical path generation and upload)
+      console.log('Calling Edge Function for hierarchical storage upload...');
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/save-recording-with-glb`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+          },
+          body: formData,
+        }
       );
 
-      if (glbError) {
-        throw new Error(`GLB upload failed: ${glbError.message}`);
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Edge Function request failed');
       }
 
-      console.log('GLB uploaded:', glbData.publicUrl);
+      console.log('Recording saved successfully:', result.record.id);
 
-      // Optional: Upload raw CSV data
-      let rawUrl = null;
-      try {
-        const csvData = this.framesToCSV();
-        const csvBlob = new Blob([csvData], { type: 'text/csv' });
-        const csvFileName = `${baseFileName}.csv`;
-        
-        const { data: csvData_result, error: csvError } = await StorageService.uploadRawData(
-          this.projectId,
-          csvFileName,
-          csvBlob
-        );
-
-        if (!csvError) {
-          rawUrl = csvData_result.publicUrl;
-          console.log('CSV uploaded:', rawUrl);
-        }
-      } catch (csvErr) {
-        console.warn('CSV upload failed (non-critical):', csvErr);
-      }
-
-      // Create record in database
-      console.log('Creating database record...');
-      const { data: record, error: dbError } = await DatabaseService.createRecord({
-        project_id: this.projectId,
-        option_id: this.selectedOption.id,
-        scenario_id: this.selectedScenario.id,
-        record_url: glbData.publicUrl,
-        raw_url: rawUrl,
-        length_ms: durationMs,
-        device_type: this.deviceType,
-      });
-
-      if (dbError) {
-        throw new Error(`Database record creation failed: ${dbError.message}`);
-      }
-
-      console.log('Record created in database:', record.id);
-
-      return { 
-        success: true, 
-        record,
-        glbUrl: glbData.publicUrl,
-        rawUrl 
+      return {
+        success: true,
+        record: result.record,
+        glbUrl: result.glbUrl,
+        rawUrl: result.rawUrl,
       };
+
     } catch (error) {
-      console.error('Error saving recording to Supabase:', error);
+      console.error('Error saving recording:', error);
       return { success: false, error: error.message };
     }
   }

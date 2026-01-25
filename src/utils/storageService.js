@@ -2,13 +2,19 @@ import { supabase, BUCKETS } from './supabaseClient';
 
 /**
  * Storage service for managing files in Supabase Storage
- * All files are stored in the 'projects' bucket with the structure:
- * projects/{project_id}/models/{files}
- * projects/{project_id}/records/{files}
+ * 
+ * IMPORTANT: As of the hierarchical storage update, direct uploads are deprecated.
+ * All file uploads should go through Edge Functions which handle:
+ * - Hierarchical path generation: projects/{project_name}_{project_id}/...
+ * - Service-role authentication
+ * - Database record creation
+ * 
+ * This service is kept for read operations and legacy compatibility.
  */
 export class StorageService {
   /**
    * Upload a file to Supabase Storage
+   * @deprecated Use Edge Functions for uploads (save-recording-with-glb endpoint)
    * @param {string} path - File path within the bucket
    * @param {File|Blob} file - File to upload
    * @param {Object} options - Upload options
@@ -46,6 +52,7 @@ export class StorageService {
 
   /**
    * Upload a model file (GLB) for a project
+   * @deprecated Use Edge Functions for uploads
    * @param {string} projectId - Project UUID
    * @param {string} modelType - Type of model ('context', 'option', or 'heatmap')
    * @param {File|Blob} file - Model file
@@ -60,6 +67,7 @@ export class StorageService {
 
   /**
    * Upload a recording file to storage
+   * @deprecated Use Edge Functions for uploads (save-recording-with-glb endpoint)
    * @param {string} projectId - Project UUID
    * @param {string} fileName - File name (should follow format: optionName_scenarioName_uniqueId.glb)
    * @param {File|Blob} file - Recording GLB file
@@ -72,18 +80,7 @@ export class StorageService {
 
   /**
    * Upload raw data file (CSV) for a recording
-   * @param {string} projectId - Project UUID
-   * @param {string} fileName - File name (should follow format: optionName_scenarioName_uniqueId.csv)
-   * @param {File|Blob} file - Raw data CSV file
-   * @returns {Promise<Object>} Upload result
-   */
-  static async uploadRawData(projectId, fileName, file) {
-    const path = `${projectId}/records/${fileName}`;
-    return await this.uploadFile(path, file);
-  }
-
-  /**
-   * Upload raw data file (CSV) for a recording
+   * @deprecated Use Edge Functions for uploads (save-recording-with-glb endpoint)
    * @param {string} projectId - Project UUID
    * @param {string} fileName - File name (should follow format: optionName_scenarioName_uniqueId.csv)
    * @param {File|Blob} file - Raw data CSV file

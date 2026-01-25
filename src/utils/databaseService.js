@@ -284,6 +284,9 @@ export class DatabaseService {
 
   /**
    * Create a new record
+   * @deprecated Use Edge Functions for record creation (save-recording-with-glb endpoint)
+   * Edge Functions handle hierarchical storage paths and database record creation atomically
+   * 
    * @param {Object} recordData - Record information
    * @param {string} recordData.project_id - Project UUID
    * @param {string} recordData.option_id - Option UUID

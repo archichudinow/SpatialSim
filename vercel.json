@@ -4,5 +4,11 @@
   "devCommand": "npm run dev",
   "env": {
     "VITE_APP_TITLE": "VR Spatial Scene"
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }

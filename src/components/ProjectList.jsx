@@ -118,12 +118,20 @@ function ProjectCard({ project, selection, onOptionChange, onScenarioChange, onS
   const handleSelectClick = (e) => {
     e.preventDefault();
     if (canRun) {
-      // Store selection in sessionStorage for Scene to use
-      sessionStorage.setItem(`project_${project.id}_selection`, JSON.stringify({
-        optionId: selectedOptionId,
-        scenarioId: selectedScenarioId,
-      }));
-      onSelect(project.id);
+      // Navigate with option and scenario as URL parameters
+      const params = new URLSearchParams();
+      if (selectedOptionId) {
+        params.set('option', selectedOptionId);
+      }
+      if (selectedScenarioId) {
+        params.set('scenario', selectedScenarioId);
+      }
+      const url = `/${project.id}${params.toString() ? '?' + params.toString() : ''}`;
+      window.history.pushState({}, '', url);
+      // Manually trigger popstate event since pushState doesn't fire it
+      // This will cause App to re-read the URL and update state
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      // Don't call onSelect(project.id) - it would overwrite the URL without query params!
     }
   };
 

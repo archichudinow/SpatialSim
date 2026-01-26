@@ -189,7 +189,7 @@ function ModelContent({ url, ref }) {
     }
     
     return newScene;
-  }, [scene]);
+  }, [scene, url]);
 
   return (
     <group ref={ref} scale={[1, 1, 1]}>

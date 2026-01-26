@@ -8,12 +8,13 @@ import './App.css';
 
 function App() {
   const [projectId, setProjectId] = useState(useProjectId());
-  const urlParams = useUrlParams();
+  const [urlParams, setUrlParams] = useState(useUrlParams());
 
   // Listen for navigation changes
   useEffect(() => {
     const handleNavigation = () => {
       setProjectId(useProjectId());
+      setUrlParams(useUrlParams());
     };
 
     window.addEventListener('popstate', handleNavigation);

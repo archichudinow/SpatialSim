@@ -177,7 +177,7 @@ function SceneContent({ project, selectedOption }) {
       ))}
       
       {/* Load option model if it exists */}
-      {optionModelUrl && <Model ref={modelRef} url={optionModelUrl} />}
+      {optionModelUrl && <Model key={`option-${selectedOption?.id || optionModelUrl}`} ref={modelRef} url={optionModelUrl} />}
       
       <Controls />
       <FrameCapture modelRef={modelRef} contextModelRef={contextModelRef} />

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { useThree } from '@react-three/fiber';
+import { useThree, useFrame } from '@react-three/fiber';
 import recordingManager from '../utils/RecordingManager';
 
 /**
@@ -84,106 +84,99 @@ export function RecordingVisualization({ showVisualization }) {
     };
   }, [showVisualization, scene]);
 
-  // Update visualization with new frames (incremental updates)
-  useEffect(() => {
+  // Update visualization every frame for immediate feedback
+  useFrame(() => {
     if (!showVisualization || !groupRef.current) return;
 
-    const updateVisualization = () => {
-      const frames = recordingManager.getFrames();
-      const currentFrameCount = frames.length;
+    const frames = recordingManager.getFrames();
+    const currentFrameCount = frames.length;
 
-      // Only update if new frames were added
-      if (currentFrameCount === lastFrameCountRef.current) return;
-      
-      lastFrameCountRef.current = currentFrameCount;
+    // Only update if new frames were added
+    if (currentFrameCount === lastFrameCountRef.current) return;
+    
+    lastFrameCountRef.current = currentFrameCount;
 
-      if (currentFrameCount === 0) {
-        // Clear all geometries if no frames
-        if (positionPointsRef.current?.geometry) {
-          positionPointsRef.current.geometry.dispose();
-          positionPointsRef.current.geometry = new THREE.BufferGeometry();
-        }
-        if (lookAtPointsRef.current?.geometry) {
-          lookAtPointsRef.current.geometry.dispose();
-          lookAtPointsRef.current.geometry = new THREE.BufferGeometry();
-        }
-        if (lineRef.current?.geometry) {
-          lineRef.current.geometry.dispose();
-          lineRef.current.geometry = new THREE.BufferGeometry();
-        }
-        return;
-      }
-
-      // Filter frames to only show recent ones (trailing effect)
-      const now = Date.now();
-      const recordingStart = recordingManager.startTime;
-      const visibleFrames = frames.filter(frame => {
-        const frameAge = now - (recordingStart + frame.time * 1000);
-        return frameAge < TRAIL_DURATION;
-      });
-
-      const visibleCount = visibleFrames.length;
-      if (visibleCount === 0) return;
-
-      // Build arrays for visible frames only
-      const positionArray = new Float32Array(visibleCount * 3);
-      const lookAtArray = new Float32Array(visibleCount * 3);
-      const lineArray = new Float32Array(visibleCount * 6);
-
-      for (let i = 0; i < visibleCount; i++) {
-        const frame = visibleFrames[i];
-        const i3 = i * 3;
-        const i6 = i * 6;
-
-        // Position points
-        positionArray[i3] = frame.position.x;
-        positionArray[i3 + 1] = frame.position.y;
-        positionArray[i3 + 2] = frame.position.z;
-
-        // LookAt points
-        lookAtArray[i3] = frame.lookAt.x;
-        lookAtArray[i3 + 1] = frame.lookAt.y;
-        lookAtArray[i3 + 2] = frame.lookAt.z;
-
-        // Gaze direction lines
-        lineArray[i6] = frame.position.x;
-        lineArray[i6 + 1] = frame.position.y;
-        lineArray[i6 + 2] = frame.position.z;
-        lineArray[i6 + 3] = frame.lookAt.x;
-        lineArray[i6 + 4] = frame.lookAt.y;
-        lineArray[i6 + 5] = frame.lookAt.z;
-      }
-
-      // Update position points
-      if (positionPointsRef.current) {
+    if (currentFrameCount === 0) {
+      // Clear all geometries if no frames
+      if (positionPointsRef.current?.geometry) {
         positionPointsRef.current.geometry.dispose();
-        const positionGeometry = new THREE.BufferGeometry();
-        positionGeometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
-        positionPointsRef.current.geometry = positionGeometry;
+        positionPointsRef.current.geometry = new THREE.BufferGeometry();
       }
-
-      // Update lookAt points
-      if (lookAtPointsRef.current) {
+      if (lookAtPointsRef.current?.geometry) {
         lookAtPointsRef.current.geometry.dispose();
-        const lookAtGeometry = new THREE.BufferGeometry();
-        lookAtGeometry.setAttribute('position', new THREE.BufferAttribute(lookAtArray, 3));
-        lookAtPointsRef.current.geometry = lookAtGeometry;
+        lookAtPointsRef.current.geometry = new THREE.BufferGeometry();
       }
-
-      // Update gaze direction lines
-      if (lineRef.current) {
+      if (lineRef.current?.geometry) {
         lineRef.current.geometry.dispose();
-        const lineGeometry = new THREE.BufferGeometry();
-        lineGeometry.setAttribute('position', new THREE.BufferAttribute(lineArray, 3));
-        lineRef.current.geometry = lineGeometry;
+        lineRef.current.geometry = new THREE.BufferGeometry();
       }
-    };
+      return;
+    }
 
-    const interval = setInterval(updateVisualization, 250); // Update every 250ms
-    updateVisualization(); // Initial update
+    // Filter frames to only show recent ones (trailing effect)
+    const now = Date.now();
+    const recordingStart = recordingManager.startTime;
+    const visibleFrames = frames.filter(frame => {
+      const frameAge = now - (recordingStart + frame.time * 1000);
+      return frameAge < TRAIL_DURATION;
+    });
 
-    return () => clearInterval(interval);
-  }, [showVisualization]);
+    const visibleCount = visibleFrames.length;
+    if (visibleCount === 0) return;
+
+    // Build arrays for visible frames only
+    const positionArray = new Float32Array(visibleCount * 3);
+    const lookAtArray = new Float32Array(visibleCount * 3);
+    const lineArray = new Float32Array(visibleCount * 6);
+
+    for (let i = 0; i < visibleCount; i++) {
+      const frame = visibleFrames[i];
+      const i3 = i * 3;
+      const i6 = i * 6;
+
+      // Position points
+      positionArray[i3] = frame.position.x;
+      positionArray[i3 + 1] = frame.position.y;
+      positionArray[i3 + 2] = frame.position.z;
+
+      // LookAt points
+      lookAtArray[i3] = frame.lookAt.x;
+      lookAtArray[i3 + 1] = frame.lookAt.y;
+      lookAtArray[i3 + 2] = frame.lookAt.z;
+
+      // Gaze direction lines
+      lineArray[i6] = frame.position.x;
+      lineArray[i6 + 1] = frame.position.y;
+      lineArray[i6 + 2] = frame.position.z;
+      lineArray[i6 + 3] = frame.lookAt.x;
+      lineArray[i6 + 4] = frame.lookAt.y;
+      lineArray[i6 + 5] = frame.lookAt.z;
+    }
+
+    // Update position points
+    if (positionPointsRef.current) {
+      positionPointsRef.current.geometry.dispose();
+      const positionGeometry = new THREE.BufferGeometry();
+      positionGeometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
+      positionPointsRef.current.geometry = positionGeometry;
+    }
+
+    // Update lookAt points
+    if (lookAtPointsRef.current) {
+      lookAtPointsRef.current.geometry.dispose();
+      const lookAtGeometry = new THREE.BufferGeometry();
+      lookAtGeometry.setAttribute('position', new THREE.BufferAttribute(lookAtArray, 3));
+      lookAtPointsRef.current.geometry = lookAtGeometry;
+    }
+
+    // Update gaze direction lines
+    if (lineRef.current) {
+      lineRef.current.geometry.dispose();
+      const lineGeometry = new THREE.BufferGeometry();
+      lineGeometry.setAttribute('position', new THREE.BufferAttribute(lineArray, 3));
+      lineRef.current.geometry = lineGeometry;
+    }
+  });
 
   return null; // Visualization is rendered directly in Three.js scene
 }

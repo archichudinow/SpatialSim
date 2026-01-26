@@ -12,6 +12,12 @@ import { LoadingScreen } from './LoadingScreen';
 import recordingManager from '../utils/RecordingManager';
 import StorageService from '../utils/storageService';
 import * as THREE from 'three';
+import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
+
+// Extend Three.js with BVH acceleration for faster raycasting on high-poly models
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 function FrameCapture({ modelRef, contextModelRef }) {
   const { camera, scene } = useThree();
@@ -20,6 +26,13 @@ function FrameCapture({ modelRef, contextModelRef }) {
   const allMeshesRef = useRef([]);
   const meshCacheCompleteRef = useRef(false);
   const frameCounterRef = useRef(0);
+  
+  // Configure raycaster for better performance
+  useEffect(() => {
+    const raycaster = raycasterRef.current;
+    raycaster.far = 100; // Limit raycast distance to 100 units
+    raycaster.firstHitOnly = true; // Stop after first hit (BVH optimization)
+  }, []);
 
   // Cache meshes - stop updating once we have them
   useEffect(() => {
@@ -34,6 +47,10 @@ function FrameCapture({ modelRef, contextModelRef }) {
       if (modelRef?.current) {
         modelRef.current.traverse((obj) => {
           if (obj.isMesh && obj.geometry) {
+            // Compute BVH for high-poly meshes (dramatic performance boost)
+            if (!obj.geometry.boundsTree) {
+              obj.geometry.computeBoundsTree();
+            }
             optionMeshes.push(obj);
             allMeshes.push(obj);
           }
@@ -44,6 +61,10 @@ function FrameCapture({ modelRef, contextModelRef }) {
       if (contextModelRef?.current) {
         contextModelRef.current.traverse((obj) => {
           if (obj.isMesh && obj.geometry) {
+            // Compute BVH for high-poly meshes
+            if (!obj.geometry.boundsTree) {
+              obj.geometry.computeBoundsTree();
+            }
             allMeshes.push(obj);
           }
         });

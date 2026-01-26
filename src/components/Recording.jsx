@@ -148,6 +148,26 @@ export function Recording({ project, selectedOption, selectedScenario, onReload,
     visualizationState = checked;
   };
 
+  // Keyboard shortcut for recording (R key)
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      // Ignore if typing in an input field
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        if (isRecording) {
+          handleStopRecording();
+        } else {
+          handleStartRecording();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [isRecording, selectedScenario]);
+
   return (
     <div className="recording-panel">
       {project && (
@@ -198,7 +218,6 @@ export function Recording({ project, selectedOption, selectedScenario, onReload,
             type="checkbox"
             checked={showVisualization}
             onChange={(e) => handleVisualizationToggle(e.target.checked)}
-            disabled={!isRecording}
           />
           <span>Show Gaze Points</span>
         </label>
@@ -220,11 +239,12 @@ export function Recording({ project, selectedOption, selectedScenario, onReload,
             className="btn btn-start"
             onClick={handleStartRecording}
             disabled={isExporting}
+            title="Start Recording (Press R)"
           >
             Start Recording
           </button>
         ) : (
-          <button className="btn btn-stop" onClick={handleStopRecording}>
+          <button className="btn btn-stop" onClick={handleStopRecording} title="Stop Recording (Press R)">
             Stop Recording
           </button>
         )}

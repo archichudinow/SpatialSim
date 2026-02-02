@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { XR, createXRStore, XROrigin, TeleportTarget, useXRControllerLocomotion } from '@react-three/xr';
+import { XR, createXRStore, XROrigin, TeleportTarget, useXRControllerLocomotion, PointerEvents, noEvents } from '@react-three/xr';
 import { Group, Vector3 } from 'three';
 import { Lighting } from './Lighting';
 import { Ground } from './Ground';
@@ -179,7 +179,7 @@ function VRLocomotion() {
 }
 
 function SceneContent({ project, selectedOption, selectedScenario }) {
-  const [showViz, setShowViz] = useState(false);
+  const [showViz, setShowViz] = useState(true);
   const modelRef = useRef(null);
   const contextModelRef = useRef(null);
 
@@ -367,6 +367,7 @@ export function Scene({ project, selectedOption, selectedScenario, loading, erro
       </button>
       <ErrorBoundary>
         <Canvas
+          events={noEvents}
           camera={{ 
             position: [0, 1.6, 5], 
             fov: 75,
@@ -375,6 +376,7 @@ export function Scene({ project, selectedOption, selectedScenario, loading, erro
           }}
         >
           <XR store={store}>
+            <PointerEvents />
             <SceneContent project={project} selectedOption={selectedOption} selectedScenario={selectedScenario} />
           </XR>
         </Canvas>

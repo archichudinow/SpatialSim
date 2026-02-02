@@ -133,23 +133,32 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
     });
   }, [positionMenuInFront]);
   
-  // Check for grip button press to toggle menu
+  // Check for button press to toggle menu
+  // Supports: Grip buttons (squeeze) OR Y button (left) OR B button (right)
   useFrame(() => {
     if (!isPresenting) return;
     
-    // Check either grip button (left OR right)
+    // Check grip buttons
     const leftGrip = leftController?.gamepad?.['xr-standard-squeeze'];
     const rightGrip = rightController?.gamepad?.['xr-standard-squeeze'];
-    const leftPressed = leftGrip?.state === 'pressed';
-    const rightPressed = rightGrip?.state === 'pressed';
-    const eitherPressed = leftPressed || rightPressed;
+    const leftGripPressed = leftGrip?.state === 'pressed';
+    const rightGripPressed = rightGrip?.state === 'pressed';
+    
+    // Check face buttons (Y on left, B on right)
+    const yButton = leftController?.gamepad?.['y-button'];
+    const bButton = rightController?.gamepad?.['b-button'];
+    const yPressed = yButton?.state === 'pressed';
+    const bPressed = bButton?.state === 'pressed';
+    
+    // Any of these buttons can toggle the menu
+    const anyPressed = leftGripPressed || rightGripPressed || yPressed || bPressed;
     
     // Toggle on release (after press)
-    if (lastGripRef.current && !eitherPressed) {
+    if (lastGripRef.current && !anyPressed) {
       toggleMenu();
     }
     
-    lastGripRef.current = eitherPressed;
+    lastGripRef.current = anyPressed;
     
     // Update menu position and rotation
     if (groupRef.current && menuVisible) {
@@ -329,7 +338,7 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
         anchorX="center"
         anchorY="middle"
       >
-        Press GRIP to close menu
+        Press GRIP or Y/B button to close
       </Text>
       
       {/* Movement frozen indicator */}

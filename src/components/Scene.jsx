@@ -240,11 +240,14 @@ function SceneContent({ project, selectedOption, selectedScenario }) {
 
 const store = createXRStore({
   // Enable controller models and teleport pointers for VR locomotion
+  // Disable grab pointer to free up grip button for menu toggle
   controller: {
     teleportPointer: true,
+    grabPointer: false,
   },
   hand: {
     teleportPointer: true,
+    grabPointer: false,
   },
 });
 

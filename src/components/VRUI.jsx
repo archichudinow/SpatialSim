@@ -58,7 +58,7 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
   const [statusMessage, setStatusMessage] = useState('');
   
   // Track button states for toggle detection
-  const lastButtonStateRef = useRef({ left: false, right: false });
+  const lastButtonStateRef = useRef({ left: false, right: false, both: false });
   
   // Get controller states
   const leftController = useXRInputSourceState('controller', 'left');
@@ -110,26 +110,26 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
     onMenuStateChange?.(false);
   }, [onMenuStateChange]);
   
-  // Check for button press to toggle menu (Y button on left, B button on right)
+  // Check for button press to toggle menu (both triggers pressed together)
   useFrame(() => {
     if (!isPresenting) return;
     
-    // Check left controller Y button (secondary button)
-    const leftYButton = leftController?.gamepad?.['y-button'];
-    const leftPressed = leftYButton?.state === 'pressed';
+    // Check left controller trigger
+    const leftTrigger = leftController?.gamepad?.['xr-standard-trigger'];
+    const leftPressed = leftTrigger?.state === 'pressed';
     
-    // Check right controller B button (secondary button)  
-    const rightBButton = rightController?.gamepad?.['b-button'];
-    const rightPressed = rightBButton?.state === 'pressed';
+    // Check right controller trigger
+    const rightTrigger = rightController?.gamepad?.['xr-standard-trigger'];
+    const rightPressed = rightTrigger?.state === 'pressed';
     
-    // Toggle on button release (to avoid repeated toggles)
-    if (lastButtonStateRef.current.left && !leftPressed) {
+    // Toggle menu when BOTH triggers are pressed and released together
+    const bothPressed = leftPressed && rightPressed;
+    
+    if (lastButtonStateRef.current.both && !bothPressed) {
       toggleMenu();
     }
-    if (lastButtonStateRef.current.right && !rightPressed) {
-      toggleMenu();
-    }
     
+    lastButtonStateRef.current.both = bothPressed;
     lastButtonStateRef.current.left = leftPressed;
     lastButtonStateRef.current.right = rightPressed;
   });
@@ -385,7 +385,7 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
         anchorX="center"
         anchorY="middle"
       >
-        Press Y or B button to toggle menu
+        Press both triggers together to toggle menu
       </Text>
     </group>
   );

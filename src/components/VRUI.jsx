@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
-import { useXR, useXRInputSourceState } from '@react-three/xr';
+import { useXR, useXRInputSourceState, useXRControllerButtonEvent } from '@react-three/xr';
 import * as THREE from 'three';
 import recordingManager from '../utils/RecordingManager';
 
@@ -42,6 +42,70 @@ function VRButton({ position, label, onClick, color = '#333333', hoverColor = '#
   );
 }
 
+// Floating indicator that follows user when menu is closed
+function MenuIndicator({ camera, isRecording, frameCount, onClick }) {
+  const groupRef = useRef();
+  
+  useFrame(() => {
+    if (!groupRef.current) return;
+    
+    // Position indicator on the left side of user's view
+    const cameraPosition = new THREE.Vector3();
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
+    camera.getWorldDirection(cameraDirection);
+    
+    // Get left direction (perpendicular to camera direction)
+    const leftDir = new THREE.Vector3(-cameraDirection.z, 0, cameraDirection.x).normalize();
+    
+    // Position to the left and slightly forward
+    const position = cameraPosition.clone()
+      .add(cameraDirection.multiplyScalar(0.6))
+      .add(leftDir.multiplyScalar(0.3));
+    position.y = cameraPosition.y - 0.15;
+    
+    groupRef.current.position.copy(position);
+    
+    // Face the camera
+    groupRef.current.lookAt(cameraPosition);
+  });
+  
+  return (
+    <group ref={groupRef} onClick={onClick}>
+      {/* Small floating panel */}
+      <mesh>
+        <planeGeometry args={[0.15, 0.08]} />
+        <meshStandardMaterial color="#1a1a2e" transparent opacity={0.9} />
+      </mesh>
+      
+      {/* Recording indicator or menu hint */}
+      {isRecording ? (
+        <>
+          <mesh position={[-0.045, 0.015, 0.001]}>
+            <circleGeometry args={[0.008, 16]} />
+            <meshStandardMaterial color="#ff3333" emissive="#ff3333" emissiveIntensity={1} />
+          </mesh>
+          <Text position={[0.02, 0.015, 0.001]} fontSize={0.012} color="#ff3333" anchorX="center">
+            REC {frameCount}
+          </Text>
+        </>
+      ) : frameCount > 0 ? (
+        <Text position={[0, 0.015, 0.001]} fontSize={0.012} color="#3399ff" anchorX="center">
+          {frameCount} frames
+        </Text>
+      ) : (
+        <Text position={[0, 0.015, 0.001]} fontSize={0.012} color="#ffffff" anchorX="center">
+          Menu
+        </Text>
+      )}
+      
+      <Text position={[0, -0.02, 0.001]} fontSize={0.008} color="#888888" anchorX="center">
+        Grip both to open
+      </Text>
+    </group>
+  );
+}
+
 // VR Recording UI Panel
 export function VRUI({ project, selectedOption, selectedScenario, onMenuStateChange }) {
   const { camera } = useThree();
@@ -57,8 +121,8 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   
-  // Track button states for toggle detection
-  const lastButtonStateRef = useRef({ left: false, right: false, both: false });
+  // Track grip button states for toggle detection (using squeeze/grip buttons)
+  const lastGripStateRef = useRef({ left: false, right: false });
   
   // Get controller states
   const leftController = useXRInputSourceState('controller', 'left');
@@ -110,28 +174,29 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
     onMenuStateChange?.(false);
   }, [onMenuStateChange]);
   
-  // Check for button press to toggle menu (both triggers pressed together)
+  // Check for GRIP/SQUEEZE buttons pressed together to toggle menu
+  // (Grip buttons are separate from trigger, so they don't interfere with teleport)
   useFrame(() => {
     if (!isPresenting) return;
     
-    // Check left controller trigger
-    const leftTrigger = leftController?.gamepad?.['xr-standard-trigger'];
-    const leftPressed = leftTrigger?.state === 'pressed';
+    // Check left controller grip/squeeze button
+    const leftGrip = leftController?.gamepad?.['xr-standard-squeeze'];
+    const leftPressed = leftGrip?.state === 'pressed';
     
-    // Check right controller trigger
-    const rightTrigger = rightController?.gamepad?.['xr-standard-trigger'];
-    const rightPressed = rightTrigger?.state === 'pressed';
+    // Check right controller grip/squeeze button
+    const rightGrip = rightController?.gamepad?.['xr-standard-squeeze'];
+    const rightPressed = rightGrip?.state === 'pressed';
     
-    // Toggle menu when BOTH triggers are pressed and released together
-    const bothPressed = leftPressed && rightPressed;
+    // Both grips were pressed and now at least one is released = toggle menu
+    const wasPressed = lastGripStateRef.current.left && lastGripStateRef.current.right;
+    const isPressed = leftPressed && rightPressed;
     
-    if (lastButtonStateRef.current.both && !bothPressed) {
+    if (wasPressed && !isPressed) {
       toggleMenu();
     }
     
-    lastButtonStateRef.current.both = bothPressed;
-    lastButtonStateRef.current.left = leftPressed;
-    lastButtonStateRef.current.right = rightPressed;
+    lastGripStateRef.current.left = leftPressed;
+    lastGripStateRef.current.right = rightPressed;
   });
   
   // Update recording status
@@ -227,9 +292,22 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
     closeMenu();
   };
   
-  // Don't render if not in VR or menu is closed
-  if (!isPresenting || !menuOpen) return null;
+  // Don't render anything if not in VR
+  if (!isPresenting) return null;
   
+  // Show indicator when menu is closed
+  if (!menuOpen) {
+    return (
+      <MenuIndicator 
+        camera={camera} 
+        isRecording={isRecording} 
+        frameCount={frameCount} 
+        onClick={toggleMenu}
+      />
+    );
+  }
+  
+  // Show full menu when open
   return (
     <group ref={groupRef}>
       {/* Background panel */}
@@ -385,7 +463,7 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
         anchorX="center"
         anchorY="middle"
       >
-        Press both triggers together to toggle menu
+        Squeeze both grips to close
       </Text>
     </group>
   );

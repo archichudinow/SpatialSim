@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
-import { useXR, useXRInputSourceState } from '@react-three/xr';
+import { useXR, useXRInputSourceState, useXRControllerButtonEvent } from '@react-three/xr';
 import * as THREE from 'three';
 import recordingManager from '../utils/RecordingManager';
 
@@ -79,9 +79,6 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
   const [duration, setDuration] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   
-  // Track grip button state for toggle
-  const lastGripRef = useRef(false);
-  
   // Get controller states
   const leftController = useXRInputSourceState('controller', 'left');
   const rightController = useXRInputSourceState('controller', 'right');
@@ -133,32 +130,31 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
     });
   }, [positionMenuInFront]);
   
-  // Check for button press to toggle menu
-  // Supports: Grip buttons (squeeze) OR Y button (left) OR B button (right)
-  useFrame(() => {
-    if (!isPresenting) return;
-    
-    // Check grip buttons
-    const leftGrip = leftController?.gamepad?.['xr-standard-squeeze'];
-    const rightGrip = rightController?.gamepad?.['xr-standard-squeeze'];
-    const leftGripPressed = leftGrip?.state === 'pressed';
-    const rightGripPressed = rightGrip?.state === 'pressed';
-    
-    // Check face buttons (Y on left, B on right)
-    const yButton = leftController?.gamepad?.['y-button'];
-    const bButton = rightController?.gamepad?.['b-button'];
-    const yPressed = yButton?.state === 'pressed';
-    const bPressed = bButton?.state === 'pressed';
-    
-    // Any of these buttons can toggle the menu
-    const anyPressed = leftGripPressed || rightGripPressed || yPressed || bPressed;
-    
-    // Toggle on release (after press)
-    if (lastGripRef.current && !anyPressed) {
+  // Use proper button event hooks for reliable detection
+  // Y button on left controller
+  useXRControllerButtonEvent(leftController, 'y-button', (state) => {
+    if (state === 'pressed') {
       toggleMenu();
     }
-    
-    lastGripRef.current = anyPressed;
+  });
+  
+  // B button on right controller
+  useXRControllerButtonEvent(rightController, 'b-button', (state) => {
+    if (state === 'pressed') {
+      toggleMenu();
+    }
+  });
+  
+  // A button on right controller (alternative)
+  useXRControllerButtonEvent(rightController, 'a-button', (state) => {
+    if (state === 'pressed') {
+      toggleMenu();
+    }
+  });
+  
+  // Update menu position and rotation in frame loop
+  useFrame(() => {
+    if (!isPresenting) return;
     
     // Update menu position and rotation
     if (groupRef.current && menuVisible) {
@@ -338,7 +334,7 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
         anchorX="center"
         anchorY="middle"
       >
-        Press GRIP or Y/B button to close
+        Press Y, A, or B button to toggle menu
       </Text>
       
       {/* Movement frozen indicator */}

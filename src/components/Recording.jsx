@@ -4,7 +4,7 @@ import GLBExporter from '../utils/GLBExporter';
 import './Recording.css';
 
 // Global state for visualization (shared with Scene)
-let visualizationState = false;
+let visualizationState = true;
 
 export function Recording({ project, selectedOption, selectedScenario, onReload, isVRMode }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -13,7 +13,7 @@ export function Recording({ project, selectedOption, selectedScenario, onReload,
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
-  const [showVisualization, setShowVisualization] = useState(false);
+  const [showVisualization, setShowVisualization] = useState(true);
 
   // Set project, option, and scenario IDs when they change
   useEffect(() => {

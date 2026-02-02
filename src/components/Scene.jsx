@@ -10,6 +10,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { Recording, getVisualizationState } from './Recording';
 import { RecordingVisualization } from './RecordingVisualization';
 import { LoadingScreen } from './LoadingScreen';
+import { VRUI } from './VRUI';
 import recordingManager from '../utils/RecordingManager';
 import StorageService from '../utils/storageService';
 import * as THREE from 'three';
@@ -163,7 +164,7 @@ function VRLocomotion() {
   );
 }
 
-function SceneContent({ project, selectedOption }) {
+function SceneContent({ project, selectedOption, selectedScenario }) {
   const [showViz, setShowViz] = useState(false);
   const modelRef = useRef(null);
   const contextModelRef = useRef(null);
@@ -213,6 +214,9 @@ function SceneContent({ project, selectedOption }) {
       <Controls />
       <FrameCapture modelRef={modelRef} contextModelRef={contextModelRef} />
       <RecordingVisualization showVisualization={showViz} />
+      
+      {/* VR UI for recording controls */}
+      <VRUI project={project} selectedOption={selectedOption} selectedScenario={selectedScenario} />
     </>
   );
 }
@@ -357,7 +361,7 @@ export function Scene({ project, selectedOption, selectedScenario, loading, erro
           }}
         >
           <XR store={store}>
-            <SceneContent project={project} selectedOption={selectedOption} />
+            <SceneContent project={project} selectedOption={selectedOption} selectedScenario={selectedScenario} />
           </XR>
         </Canvas>
       </ErrorBoundary>

@@ -28,6 +28,8 @@ function FrameCapture({ modelRef, contextModelRef }) {
   const allMeshesRef = useRef([]);
   const meshCacheCompleteRef = useRef(false);
   const frameCounterRef = useRef(0);
+  const cameraWorldPos = useRef(new THREE.Vector3());
+  const cameraWorldQuat = useRef(new THREE.Quaternion());
   
   // Configure raycaster for better performance
   useEffect(() => {
@@ -96,15 +98,16 @@ function FrameCapture({ modelRef, contextModelRef }) {
     frameCounterRef.current++;
     if (frameCounterRef.current % 2 !== 0) return;
 
-    // Position = camera position (gaze origin)
-    const position = camera.position;
+    // Get WORLD position and quaternion (important for VR where camera is nested in XROrigin)
+    camera.getWorldPosition(cameraWorldPos.current);
+    camera.getWorldQuaternion(cameraWorldQuat.current);
 
     // LookAt = where the gaze is hitting
-    const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraWorldQuat.current);
     
-    // Set up raycaster from camera origin and direction
+    // Set up raycaster from camera world origin and direction
     const raycaster = raycasterRef.current;
-    raycaster.ray.origin.copy(position);
+    raycaster.ray.origin.copy(cameraWorldPos.current);
     raycaster.ray.direction.copy(direction).normalize();
 
     let lookAt;
@@ -128,10 +131,10 @@ function FrameCapture({ modelRef, contextModelRef }) {
     // Fallback: No hit - use far point
     if (!lookAt) {
       const FAR_DISTANCE = 100;
-      lookAt = new THREE.Vector3().copy(position).add(direction.multiplyScalar(FAR_DISTANCE));
+      lookAt = new THREE.Vector3().copy(cameraWorldPos.current).add(direction.multiplyScalar(FAR_DISTANCE));
     }
 
-    recordingManager.recordFrame(position, lookAt);
+    recordingManager.recordFrame(cameraWorldPos.current, lookAt);
   });
 
   return null;

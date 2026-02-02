@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
-import { useThree, useFrame } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
-import { useXR, useXRInputSourceState } from '@react-three/xr';
+import { useXR } from '@react-three/xr';
 import * as THREE from 'three';
 import recordingManager from '../utils/RecordingManager';
 
@@ -11,74 +11,17 @@ export function isVRMenuOpen() {
   return menuOpenState;
 }
 
-// VR Recording UI Panel - Always visible floating panel in VR
+// VR Recording UI Panel - Fixed position panel in VR for debugging
 export function VRUI({ project, selectedOption, selectedScenario, onMenuStateChange }) {
-  const { camera } = useThree();
-  const { isPresenting, session } = useXR();
-  const groupRef = useRef();
+  const { isPresenting } = useXR();
   
   const [isRecording, setIsRecording] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const [duration, setDuration] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
-  const [debugInfo, setDebugInfo] = useState('Waiting for controllers...');
-  
-  // Get controller states for debugging
-  const leftController = useXRInputSourceState('controller', 'left');
-  const rightController = useXRInputSourceState('controller', 'right');
-  
-  // Debug: Log controller state to console and update debug text
-  useFrame(() => {
-    if (!isPresenting) return;
-    
-    // Build debug info
-    let debug = '';
-    
-    if (leftController) {
-      const gamepad = leftController.gamepad;
-      if (gamepad) {
-        const buttons = Object.keys(gamepad).filter(k => gamepad[k]?.state);
-        debug += `L: ${buttons.join(', ') || 'no buttons'}\n`;
-        
-        // Log pressed buttons
-        buttons.forEach(btn => {
-          if (gamepad[btn]?.state === 'pressed') {
-            console.log('Left pressed:', btn);
-          }
-        });
-      } else {
-        debug += 'L: no gamepad\n';
-      }
-    } else {
-      debug += 'L: no controller\n';
-    }
-    
-    if (rightController) {
-      const gamepad = rightController.gamepad;
-      if (gamepad) {
-        const buttons = Object.keys(gamepad).filter(k => gamepad[k]?.state);
-        debug += `R: ${buttons.join(', ') || 'no buttons'}`;
-        
-        // Log pressed buttons
-        buttons.forEach(btn => {
-          if (gamepad[btn]?.state === 'pressed') {
-            console.log('Right pressed:', btn);
-          }
-        });
-      } else {
-        debug += 'R: no gamepad';
-      }
-    } else {
-      debug += 'R: no controller';
-    }
-    
-    setDebugInfo(debug);
-  });
   
   // Update recording status
   useEffect(() => {
-    if (!isPresenting) return;
-    
     const interval = setInterval(() => {
       const status = recordingManager.getStatus();
       setIsRecording(status.isRecording);
@@ -87,29 +30,7 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
     }, 100);
     
     return () => clearInterval(interval);
-  }, [isPresenting]);
-  
-  // Position panel to follow camera (on left side)
-  useFrame(() => {
-    if (!groupRef.current || !isPresenting) return;
-    
-    const cameraPosition = new THREE.Vector3();
-    const cameraDirection = new THREE.Vector3();
-    camera.getWorldPosition(cameraPosition);
-    camera.getWorldDirection(cameraDirection);
-    
-    // Get left direction
-    const leftDir = new THREE.Vector3(-cameraDirection.z, 0, cameraDirection.x).normalize();
-    
-    // Position panel on the left side of view, slightly forward
-    const panelPos = cameraPosition.clone()
-      .add(cameraDirection.clone().setY(0).normalize().multiplyScalar(0.8))
-      .add(leftDir.multiplyScalar(0.4));
-    panelPos.y = cameraPosition.y - 0.1;
-    
-    groupRef.current.position.lerp(panelPos, 0.1);
-    groupRef.current.lookAt(cameraPosition);
-  });
+  }, []);
   
   const handleStartRecording = () => {
     if (!selectedScenario) {
@@ -161,50 +82,55 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
     setStatusMessage('Cleared');
   };
   
-  // Don't render if not in VR
-  if (!isPresenting) return null;
-  
+  // ALWAYS render - both in VR and desktop for testing
+  // Position at fixed world coordinates: in front and slightly to the left at eye level
   return (
-    <group ref={groupRef}>
+    <group position={[0, 1.5, -2]}>
+      {/* Debug: Large visible cube to confirm rendering */}
+      <mesh position={[0, 0.3, 0]}>
+        <boxGeometry args={[0.1, 0.1, 0.1]} />
+        <meshBasicMaterial color={isPresenting ? "#00ff00" : "#ff0000"} />
+      </mesh>
+      
       {/* Background panel */}
       <mesh position={[0, 0, -0.002]}>
-        <planeGeometry args={[0.35, 0.28]} />
+        <planeGeometry args={[0.5, 0.35]} />
         <meshBasicMaterial color="#1a1a2e" transparent opacity={0.95} side={THREE.DoubleSide} />
       </mesh>
       
       {/* Border */}
       <mesh position={[0, 0, -0.003]}>
-        <planeGeometry args={[0.36, 0.29]} />
+        <planeGeometry args={[0.52, 0.37]} />
         <meshBasicMaterial color={isRecording ? "#ff3333" : "#3399ff"} side={THREE.DoubleSide} />
       </mesh>
       
       {/* Title */}
       <Text
-        position={[0, 0.10, 0]}
-        fontSize={0.022}
+        position={[0, 0.12, 0]}
+        fontSize={0.03}
         color="white"
         anchorX="center"
         anchorY="middle"
       >
-        VR Recording
+        {isPresenting ? "VR MODE" : "DESKTOP MODE"}
       </Text>
       
       {/* Recording status */}
       <Text
-        position={[0, 0.07, 0]}
-        fontSize={0.014}
+        position={[0, 0.08, 0]}
+        fontSize={0.02}
         color={isRecording ? "#ff6666" : "#aaaaaa"}
         anchorX="center"
         anchorY="middle"
       >
-        {isRecording ? `● REC ${frameCount} frames (${duration.toFixed(1)}s)` : 
-         frameCount > 0 ? `${frameCount} frames recorded` : 'Ready'}
+        {isRecording ? `REC ${frameCount} frames` : 
+         frameCount > 0 ? `${frameCount} frames recorded` : 'Ready to record'}
       </Text>
       
       {/* Scenario info */}
       <Text
         position={[0, 0.045, 0]}
-        fontSize={0.01}
+        fontSize={0.015}
         color="#888888"
         anchorX="center"
         anchorY="middle"
@@ -214,22 +140,22 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       
       {/* Buttons - using ray pointer interaction */}
       {!isRecording ? (
-        <group position={[0, 0.01, 0]} onClick={handleStartRecording}>
+        <group position={[0, 0, 0]} onClick={handleStartRecording}>
           <mesh>
-            <boxGeometry args={[0.12, 0.035, 0.008]} />
+            <boxGeometry args={[0.15, 0.045, 0.01]} />
             <meshBasicMaterial color="#228822" />
           </mesh>
-          <Text position={[0, 0, 0.005]} fontSize={0.012} color="white" anchorX="center">
+          <Text position={[0, 0, 0.006]} fontSize={0.018} color="white" anchorX="center">
             START
           </Text>
         </group>
       ) : (
-        <group position={[0, 0.01, 0]} onClick={handleStopRecording}>
+        <group position={[0, 0, 0]} onClick={handleStopRecording}>
           <mesh>
-            <boxGeometry args={[0.12, 0.035, 0.008]} />
+            <boxGeometry args={[0.15, 0.045, 0.01]} />
             <meshBasicMaterial color="#cc2222" />
           </mesh>
-          <Text position={[0, 0, 0.005]} fontSize={0.012} color="white" anchorX="center">
+          <Text position={[0, 0, 0.006]} fontSize={0.018} color="white" anchorX="center">
             STOP
           </Text>
         </group>
@@ -237,12 +163,12 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       
       {/* Save button */}
       {frameCount > 0 && !isRecording && (
-        <group position={[-0.06, -0.035, 0]} onClick={handleSaveToDatabase}>
+        <group position={[-0.08, -0.06, 0]} onClick={handleSaveToDatabase}>
           <mesh>
-            <boxGeometry args={[0.1, 0.03, 0.008]} />
+            <boxGeometry args={[0.12, 0.04, 0.01]} />
             <meshBasicMaterial color="#2266cc" />
           </mesh>
-          <Text position={[0, 0, 0.005]} fontSize={0.01} color="white" anchorX="center">
+          <Text position={[0, 0, 0.006]} fontSize={0.014} color="white" anchorX="center">
             SAVE
           </Text>
         </group>
@@ -250,12 +176,12 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       
       {/* Clear button */}
       {frameCount > 0 && !isRecording && (
-        <group position={[0.06, -0.035, 0]} onClick={handleClear}>
+        <group position={[0.08, -0.06, 0]} onClick={handleClear}>
           <mesh>
-            <boxGeometry args={[0.1, 0.03, 0.008]} />
+            <boxGeometry args={[0.12, 0.04, 0.01]} />
             <meshBasicMaterial color="#666666" />
           </mesh>
-          <Text position={[0, 0, 0.005]} fontSize={0.01} color="white" anchorX="center">
+          <Text position={[0, 0, 0.006]} fontSize={0.014} color="white" anchorX="center">
             CLEAR
           </Text>
         </group>
@@ -264,8 +190,8 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       {/* Status message */}
       {statusMessage && (
         <Text
-          position={[0, -0.07, 0]}
-          fontSize={0.012}
+          position={[0, -0.11, 0]}
+          fontSize={0.016}
           color="#ffcc00"
           anchorX="center"
           anchorY="middle"
@@ -273,18 +199,6 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
           {statusMessage}
         </Text>
       )}
-      
-      {/* Debug info */}
-      <Text
-        position={[0, -0.10, 0]}
-        fontSize={0.008}
-        color="#666666"
-        anchorX="center"
-        anchorY="middle"
-        maxWidth={0.3}
-      >
-        {debugInfo}
-      </Text>
     </group>
   );
 }

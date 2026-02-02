@@ -1,5 +1,5 @@
-import { useRef, useState, useEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useRef, useState, useEffect, useCallback } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import { useXR } from '@react-three/xr';
 import * as THREE from 'three';
@@ -11,16 +11,75 @@ export function isVRMenuOpen() {
   return menuOpenState;
 }
 
-// VR Recording UI Panel - Fixed position panel in VR for debugging
+// Interactive button component for VR
+function VRButton({ position, label, onActivate, color = "#333333", width = 0.15, height = 0.045 }) {
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  
+  const handlePointerDown = useCallback((e) => {
+    e.stopPropagation();
+    setPressed(true);
+    console.log('VR Button pressed:', label);
+  }, [label]);
+  
+  const handlePointerUp = useCallback((e) => {
+    e.stopPropagation();
+    if (pressed) {
+      console.log('VR Button activated:', label);
+      onActivate?.();
+    }
+    setPressed(false);
+  }, [pressed, label, onActivate]);
+  
+  const handlePointerOver = useCallback((e) => {
+    e.stopPropagation();
+    setHovered(true);
+  }, []);
+  
+  const handlePointerOut = useCallback((e) => {
+    e.stopPropagation();
+    setHovered(false);
+    setPressed(false);
+  }, []);
+  
+  const currentColor = pressed ? "#ffffff" : hovered ? "#aaaaaa" : color;
+  
+  return (
+    <group position={position}>
+      <mesh
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+      >
+        <boxGeometry args={[width, height, 0.01]} />
+        <meshBasicMaterial color={currentColor} />
+      </mesh>
+      <Text 
+        position={[0, 0, 0.006]} 
+        fontSize={height * 0.4} 
+        color={pressed ? "#000000" : "white"} 
+        anchorX="center"
+        anchorY="middle"
+      >
+        {label}
+      </Text>
+    </group>
+  );
+}
+
+// VR Recording UI Panel - Fixed position panel in VR
 export function VRUI({ project, selectedOption, selectedScenario, onMenuStateChange }) {
   const { isPresenting } = useXR();
+  const { camera } = useThree();
+  const groupRef = useRef();
   
   const [isRecording, setIsRecording] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const [duration, setDuration] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   
-  // Update recording status
+  // Update recording status from the manager
   useEffect(() => {
     const interval = setInterval(() => {
       const status = recordingManager.getStatus();
@@ -32,24 +91,45 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
     return () => clearInterval(interval);
   }, []);
   
-  const handleStartRecording = () => {
+  // Position panel in front of user (follows camera in VR)
+  useFrame(() => {
+    if (!groupRef.current || !isPresenting) return;
+    
+    const cameraPos = new THREE.Vector3();
+    const cameraDir = new THREE.Vector3();
+    camera.getWorldPosition(cameraPos);
+    camera.getWorldDirection(cameraDir);
+    
+    // Position 1.5m in front, at eye level
+    const targetPos = cameraPos.clone()
+      .add(new THREE.Vector3(cameraDir.x, 0, cameraDir.z).normalize().multiplyScalar(1.5));
+    targetPos.y = cameraPos.y - 0.2;
+    
+    // Smoothly move to target position
+    groupRef.current.position.lerp(targetPos, 0.05);
+    
+    // Face the camera
+    groupRef.current.lookAt(cameraPos);
+  });
+  
+  const handleStartRecording = useCallback(() => {
+    console.log('START clicked, scenario:', selectedScenario);
     if (!selectedScenario) {
       setStatusMessage('No scenario!');
       return;
     }
     recordingManager.startRecording();
-    setIsRecording(true);
-    setFrameCount(0);
     setStatusMessage('Recording...');
-  };
+  }, [selectedScenario]);
   
-  const handleStopRecording = () => {
+  const handleStopRecording = useCallback(() => {
+    console.log('STOP clicked');
     recordingManager.stopRecording();
-    setIsRecording(false);
     setStatusMessage('Stopped');
-  };
+  }, []);
   
-  const handleSaveToDatabase = async () => {
+  const handleSaveToDatabase = useCallback(async () => {
+    console.log('SAVE clicked, frames:', frameCount);
     if (frameCount === 0) {
       setStatusMessage('No frames!');
       return;
@@ -63,7 +143,6 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
         setStatusMessage('Saved!');
         setTimeout(() => {
           recordingManager.clear();
-          setFrameCount(0);
           setStatusMessage('');
         }, 2000);
       } else {
@@ -73,64 +152,59 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       setStatusMessage('Error!');
       console.error('Save error:', error);
     }
-  };
+  }, [frameCount]);
   
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
+    console.log('CLEAR clicked');
     recordingManager.clear();
-    setFrameCount(0);
-    setDuration(0);
     setStatusMessage('Cleared');
-  };
+  }, []);
   
-  // ALWAYS render - both in VR and desktop for testing
-  // Position at fixed world coordinates: in front and slightly to the left at eye level
+  // Fixed position for desktop, following for VR
+  const initialPosition = isPresenting ? [0, 1.5, -1.5] : [0, 1.5, -2];
+  
   return (
-    <group position={[0, 1.5, -2]}>
-      {/* Debug: Large visible cube to confirm rendering */}
-      <mesh position={[0, 0.3, 0]}>
-        <boxGeometry args={[0.1, 0.1, 0.1]} />
-        <meshBasicMaterial color={isPresenting ? "#00ff00" : "#ff0000"} />
-      </mesh>
-      
-      {/* Background panel */}
-      <mesh position={[0, 0, -0.002]}>
-        <planeGeometry args={[0.5, 0.35]} />
+    <group ref={groupRef} position={initialPosition}>
+      {/* Background panel - no pointer events */}
+      <mesh position={[0, 0, -0.005]}>
+        <planeGeometry args={[0.55, 0.4]} />
         <meshBasicMaterial color="#1a1a2e" transparent opacity={0.95} side={THREE.DoubleSide} />
       </mesh>
       
       {/* Border */}
-      <mesh position={[0, 0, -0.003]}>
-        <planeGeometry args={[0.52, 0.37]} />
+      <mesh position={[0, 0, -0.006]}>
+        <planeGeometry args={[0.57, 0.42]} />
         <meshBasicMaterial color={isRecording ? "#ff3333" : "#3399ff"} side={THREE.DoubleSide} />
       </mesh>
       
       {/* Title */}
       <Text
-        position={[0, 0.12, 0]}
-        fontSize={0.03}
+        position={[0, 0.14, 0]}
+        fontSize={0.035}
         color="white"
         anchorX="center"
         anchorY="middle"
+        fontWeight="bold"
       >
-        {isPresenting ? "VR MODE" : "DESKTOP MODE"}
+        Recording Controls
       </Text>
       
       {/* Recording status */}
       <Text
-        position={[0, 0.08, 0]}
-        fontSize={0.02}
+        position={[0, 0.095, 0]}
+        fontSize={0.022}
         color={isRecording ? "#ff6666" : "#aaaaaa"}
         anchorX="center"
         anchorY="middle"
       >
-        {isRecording ? `REC ${frameCount} frames` : 
+        {isRecording ? `● RECORDING ${frameCount} frames (${duration.toFixed(1)}s)` : 
          frameCount > 0 ? `${frameCount} frames recorded` : 'Ready to record'}
       </Text>
       
       {/* Scenario info */}
       <Text
-        position={[0, 0.045, 0]}
-        fontSize={0.015}
+        position={[0, 0.055, 0]}
+        fontSize={0.016}
         color="#888888"
         anchorX="center"
         anchorY="middle"
@@ -138,67 +212,73 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
         {selectedScenario?.name || 'No scenario selected'}
       </Text>
       
-      {/* Buttons - using ray pointer interaction */}
+      {/* Main action button - START or STOP */}
       {!isRecording ? (
-        <group position={[0, 0, 0]} onClick={handleStartRecording}>
-          <mesh>
-            <boxGeometry args={[0.15, 0.045, 0.01]} />
-            <meshBasicMaterial color="#228822" />
-          </mesh>
-          <Text position={[0, 0, 0.006]} fontSize={0.018} color="white" anchorX="center">
-            START
-          </Text>
-        </group>
+        <VRButton 
+          position={[0, 0, 0]} 
+          label="START" 
+          onActivate={handleStartRecording}
+          color="#228822"
+          width={0.2}
+          height={0.055}
+        />
       ) : (
-        <group position={[0, 0, 0]} onClick={handleStopRecording}>
-          <mesh>
-            <boxGeometry args={[0.15, 0.045, 0.01]} />
-            <meshBasicMaterial color="#cc2222" />
-          </mesh>
-          <Text position={[0, 0, 0.006]} fontSize={0.018} color="white" anchorX="center">
-            STOP
-          </Text>
-        </group>
+        <VRButton 
+          position={[0, 0, 0]} 
+          label="STOP" 
+          onActivate={handleStopRecording}
+          color="#cc2222"
+          width={0.2}
+          height={0.055}
+        />
       )}
       
-      {/* Save button */}
+      {/* Save and Clear buttons - only when there are frames and not recording */}
       {frameCount > 0 && !isRecording && (
-        <group position={[-0.08, -0.06, 0]} onClick={handleSaveToDatabase}>
-          <mesh>
-            <boxGeometry args={[0.12, 0.04, 0.01]} />
-            <meshBasicMaterial color="#2266cc" />
-          </mesh>
-          <Text position={[0, 0, 0.006]} fontSize={0.014} color="white" anchorX="center">
-            SAVE
-          </Text>
-        </group>
-      )}
-      
-      {/* Clear button */}
-      {frameCount > 0 && !isRecording && (
-        <group position={[0.08, -0.06, 0]} onClick={handleClear}>
-          <mesh>
-            <boxGeometry args={[0.12, 0.04, 0.01]} />
-            <meshBasicMaterial color="#666666" />
-          </mesh>
-          <Text position={[0, 0, 0.006]} fontSize={0.014} color="white" anchorX="center">
-            CLEAR
-          </Text>
-        </group>
+        <>
+          <VRButton 
+            position={[-0.1, -0.07, 0]} 
+            label="SAVE" 
+            onActivate={handleSaveToDatabase}
+            color="#2266cc"
+            width={0.15}
+            height={0.045}
+          />
+          <VRButton 
+            position={[0.1, -0.07, 0]} 
+            label="CLEAR" 
+            onActivate={handleClear}
+            color="#666666"
+            width={0.15}
+            height={0.045}
+          />
+        </>
       )}
       
       {/* Status message */}
       {statusMessage && (
         <Text
-          position={[0, -0.11, 0]}
-          fontSize={0.016}
-          color="#ffcc00"
+          position={[0, -0.13, 0]}
+          fontSize={0.018}
+          color={statusMessage.includes('Saved') || statusMessage.includes('Recording') ? '#33ff33' : 
+                 statusMessage.includes('Failed') || statusMessage.includes('Error') ? '#ff3333' : '#ffcc00'}
           anchorX="center"
           anchorY="middle"
         >
           {statusMessage}
         </Text>
       )}
+      
+      {/* Instructions */}
+      <Text
+        position={[0, -0.165, 0]}
+        fontSize={0.012}
+        color="#666666"
+        anchorX="center"
+        anchorY="middle"
+      >
+        Point and click to interact
+      </Text>
     </group>
   );
 }

@@ -13,10 +13,10 @@ export function Controls() {
   const keysRef = useRef({});
   const rotationRef = useRef({ x: 0, y: 0 });
 
-  // Only enable desktop controls if NOT in VR
-  if (isPresenting) return null;
-
   useEffect(() => {
+    // Skip desktop controls setup when in VR mode
+    if (isPresenting) return;
+    
     const canvas = gl.domElement;
 
     const handleKeyDown = (e) => {
@@ -34,7 +34,7 @@ export function Controls() {
       keysRef.current[e.key.toLowerCase()] = false;
     };
 
-    const handleMouseDown = (e) => {
+    const handleMouseDown = () => {
       canvas.requestPointerLock =
         canvas.requestPointerLock || canvas.mozRequestPointerLock;
       canvas.requestPointerLock();
@@ -71,10 +71,13 @@ export function Controls() {
         document.exitPointerLock();
       }
     };
-  }, [camera, gl]);
+  }, [camera, gl, isPresenting]);
 
   // Use useFrame for smooth camera updates synced with render loop
   useFrame(() => {
+    // Skip desktop controls when in VR mode
+    if (isPresenting) return;
+    
     const currentSpeed = keysRef.current['shift'] ? SPRINT_SPEED : SPEED;
 
     const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(

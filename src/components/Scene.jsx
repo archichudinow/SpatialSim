@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { XR, createXRStore } from '@react-three/xr';
+import { XR, createXRStore, XROrigin, TeleportTarget, useXRControllerLocomotion } from '@react-three/xr';
+import { Group, Vector3 } from 'three';
 import { Lighting } from './Lighting';
 import { Ground } from './Ground';
 import { Model } from './Model';
@@ -135,6 +136,33 @@ function FrameCapture({ modelRef, contextModelRef }) {
   return null;
 }
 
+// VR Locomotion component - handles controller-based movement in VR
+function VRLocomotion() {
+  const originRef = useRef(null);
+  const [position, setPosition] = useState(() => new Vector3(0, 0, 0));
+  
+  // Use controller locomotion for smooth joystick-based movement
+  useXRControllerLocomotion(originRef, { speed: 2 }, { type: 'snap', degrees: 45 });
+  
+  // Handle teleportation
+  const handleTeleport = (point) => {
+    setPosition(point.clone());
+  };
+  
+  return (
+    <>
+      <XROrigin ref={originRef} position={position} />
+      {/* Ground as teleport target - allows users to teleport anywhere on the ground */}
+      <TeleportTarget onTeleport={handleTeleport}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+          <planeGeometry args={[1000, 1000]} />
+          <meshBasicMaterial transparent opacity={0} />
+        </mesh>
+      </TeleportTarget>
+    </>
+  );
+}
+
 function SceneContent({ project, selectedOption }) {
   const [showViz, setShowViz] = useState(false);
   const modelRef = useRef(null);
@@ -171,6 +199,9 @@ function SceneContent({ project, selectedOption }) {
       <Lighting />
       <Ground />
       
+      {/* VR locomotion - handles XROrigin positioning and teleportation */}
+      <VRLocomotion />
+      
       {/* Load context models if they exist */}
       {contextModelUrls.length > 0 && contextModelUrls.map((url, index) => (
         <Model key={`context-${index}`} ref={index === 0 ? contextModelRef : null} url={url} />
@@ -186,7 +217,15 @@ function SceneContent({ project, selectedOption }) {
   );
 }
 
-const store = createXRStore();
+const store = createXRStore({
+  // Enable controller models and teleport pointers for VR locomotion
+  controller: {
+    teleportPointer: true,
+  },
+  hand: {
+    teleportPointer: true,
+  },
+});
 
 export function Scene({ project, selectedOption, selectedScenario, loading, error, onReload }) {
   const [fps, setFps] = useState(60);

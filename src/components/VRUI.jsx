@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
-import { useXR } from '@react-three/xr';
+import { useXR, useXRInputSourceState } from '@react-three/xr';
 import * as THREE from 'three';
 import recordingManager from '../utils/RecordingManager';
 
@@ -19,17 +19,15 @@ function VRButton({ position, label, onActivate, color = "#333333", width = 0.15
   const handlePointerDown = useCallback((e) => {
     e.stopPropagation();
     setPressed(true);
-    console.log('VR Button pressed:', label);
-  }, [label]);
+  }, []);
   
   const handlePointerUp = useCallback((e) => {
     e.stopPropagation();
     if (pressed) {
-      console.log('VR Button activated:', label);
       onActivate?.();
     }
     setPressed(false);
-  }, [pressed, label, onActivate]);
+  }, [pressed, onActivate]);
   
   const handlePointerOver = useCallback((e) => {
     e.stopPropagation();
@@ -68,16 +66,25 @@ function VRButton({ position, label, onActivate, color = "#333333", width = 0.15
   );
 }
 
-// VR Recording UI Panel - Fixed position panel in VR
+// VR Recording UI Panel - Toggle with grip button
 export function VRUI({ project, selectedOption, selectedScenario, onMenuStateChange }) {
   const { isPresenting } = useXR();
   const { camera } = useThree();
   const groupRef = useRef();
+  const menuPositionRef = useRef(new THREE.Vector3(0, 1.5, -1.5));
   
+  const [menuVisible, setMenuVisible] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const [duration, setDuration] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
+  
+  // Track grip button state for toggle
+  const lastGripRef = useRef(false);
+  
+  // Get controller states
+  const leftController = useXRInputSourceState('controller', 'left');
+  const rightController = useXRInputSourceState('controller', 'right');
   
   // Update recording status from the manager
   useEffect(() => {
@@ -91,45 +98,88 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
     return () => clearInterval(interval);
   }, []);
   
-  // Position panel in front of user (follows camera in VR)
-  useFrame(() => {
-    if (!groupRef.current || !isPresenting) return;
-    
+  // Reset menu when exiting VR
+  useEffect(() => {
+    if (!isPresenting) {
+      setMenuVisible(false);
+      menuOpenState = false;
+    }
+  }, [isPresenting]);
+  
+  // Position menu in front of user when shown
+  const positionMenuInFront = useCallback(() => {
     const cameraPos = new THREE.Vector3();
     const cameraDir = new THREE.Vector3();
     camera.getWorldPosition(cameraPos);
     camera.getWorldDirection(cameraDir);
     
-    // Position 1.5m in front, at eye level
-    const targetPos = cameraPos.clone()
-      .add(new THREE.Vector3(cameraDir.x, 0, cameraDir.z).normalize().multiplyScalar(1.5));
-    targetPos.y = cameraPos.y - 0.2;
+    // Position 1.2m in front, at eye level
+    const pos = cameraPos.clone()
+      .add(new THREE.Vector3(cameraDir.x, 0, cameraDir.z).normalize().multiplyScalar(1.2));
+    pos.y = cameraPos.y - 0.1;
     
-    // Smoothly move to target position
-    groupRef.current.position.lerp(targetPos, 0.05);
+    menuPositionRef.current.copy(pos);
+  }, [camera]);
+  
+  // Toggle menu visibility
+  const toggleMenu = useCallback(() => {
+    setMenuVisible(prev => {
+      const newState = !prev;
+      menuOpenState = newState;
+      if (newState) {
+        positionMenuInFront();
+      }
+      return newState;
+    });
+  }, [positionMenuInFront]);
+  
+  // Check for grip button press to toggle menu
+  useFrame(() => {
+    if (!isPresenting) return;
     
-    // Face the camera
-    groupRef.current.lookAt(cameraPos);
+    // Check either grip button (left OR right)
+    const leftGrip = leftController?.gamepad?.['xr-standard-squeeze'];
+    const rightGrip = rightController?.gamepad?.['xr-standard-squeeze'];
+    const leftPressed = leftGrip?.state === 'pressed';
+    const rightPressed = rightGrip?.state === 'pressed';
+    const eitherPressed = leftPressed || rightPressed;
+    
+    // Toggle on release (after press)
+    if (lastGripRef.current && !eitherPressed) {
+      toggleMenu();
+    }
+    
+    lastGripRef.current = eitherPressed;
+    
+    // Update menu position and rotation
+    if (groupRef.current && menuVisible) {
+      groupRef.current.position.copy(menuPositionRef.current);
+      
+      // Face the camera
+      const cameraPos = new THREE.Vector3();
+      camera.getWorldPosition(cameraPos);
+      groupRef.current.lookAt(cameraPos);
+    }
   });
   
   const handleStartRecording = useCallback(() => {
-    console.log('START clicked, scenario:', selectedScenario);
     if (!selectedScenario) {
       setStatusMessage('No scenario!');
       return;
     }
     recordingManager.startRecording();
     setStatusMessage('Recording...');
+    // Close menu after starting
+    setMenuVisible(false);
+    menuOpenState = false;
   }, [selectedScenario]);
   
   const handleStopRecording = useCallback(() => {
-    console.log('STOP clicked');
     recordingManager.stopRecording();
     setStatusMessage('Stopped');
   }, []);
   
   const handleSaveToDatabase = useCallback(async () => {
-    console.log('SAVE clicked, frames:', frameCount);
     if (frameCount === 0) {
       setStatusMessage('No frames!');
       return;
@@ -144,7 +194,10 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
         setTimeout(() => {
           recordingManager.clear();
           setStatusMessage('');
-        }, 2000);
+          // Close menu after saving
+          setMenuVisible(false);
+          menuOpenState = false;
+        }, 1500);
       } else {
         setStatusMessage('Failed!');
       }
@@ -155,31 +208,30 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
   }, [frameCount]);
   
   const handleClear = useCallback(() => {
-    console.log('CLEAR clicked');
     recordingManager.clear();
     setStatusMessage('Cleared');
   }, []);
   
-  // Fixed position for desktop, following for VR
-  const initialPosition = isPresenting ? [0, 1.5, -1.5] : [0, 1.5, -2];
+  // Don't render if not in VR or menu is hidden
+  if (!isPresenting || !menuVisible) return null;
   
   return (
-    <group ref={groupRef} position={initialPosition}>
-      {/* Background panel - no pointer events */}
+    <group ref={groupRef} position={[0, 1.5, -1.5]}>
+      {/* Background panel */}
       <mesh position={[0, 0, -0.005]}>
-        <planeGeometry args={[0.55, 0.4]} />
+        <planeGeometry args={[0.55, 0.45]} />
         <meshBasicMaterial color="#1a1a2e" transparent opacity={0.95} side={THREE.DoubleSide} />
       </mesh>
       
       {/* Border */}
       <mesh position={[0, 0, -0.006]}>
-        <planeGeometry args={[0.57, 0.42]} />
+        <planeGeometry args={[0.57, 0.47]} />
         <meshBasicMaterial color={isRecording ? "#ff3333" : "#3399ff"} side={THREE.DoubleSide} />
       </mesh>
       
       {/* Title */}
       <Text
-        position={[0, 0.14, 0]}
+        position={[0, 0.16, 0]}
         fontSize={0.035}
         color="white"
         anchorX="center"
@@ -191,7 +243,7 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       
       {/* Recording status */}
       <Text
-        position={[0, 0.095, 0]}
+        position={[0, 0.115, 0]}
         fontSize={0.022}
         color={isRecording ? "#ff6666" : "#aaaaaa"}
         anchorX="center"
@@ -203,7 +255,7 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       
       {/* Scenario info */}
       <Text
-        position={[0, 0.055, 0]}
+        position={[0, 0.075, 0]}
         fontSize={0.016}
         color="#888888"
         anchorX="center"
@@ -215,20 +267,20 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       {/* Main action button - START or STOP */}
       {!isRecording ? (
         <VRButton 
-          position={[0, 0, 0]} 
-          label="START" 
+          position={[0, 0.02, 0]} 
+          label="START RECORDING" 
           onActivate={handleStartRecording}
           color="#228822"
-          width={0.2}
+          width={0.28}
           height={0.055}
         />
       ) : (
         <VRButton 
-          position={[0, 0, 0]} 
-          label="STOP" 
+          position={[0, 0.02, 0]} 
+          label="STOP RECORDING" 
           onActivate={handleStopRecording}
           color="#cc2222"
-          width={0.2}
+          width={0.28}
           height={0.055}
         />
       )}
@@ -237,19 +289,19 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       {frameCount > 0 && !isRecording && (
         <>
           <VRButton 
-            position={[-0.1, -0.07, 0]} 
-            label="SAVE" 
+            position={[-0.1, -0.05, 0]} 
+            label="SAVE TO DB" 
             onActivate={handleSaveToDatabase}
             color="#2266cc"
-            width={0.15}
+            width={0.17}
             height={0.045}
           />
           <VRButton 
-            position={[0.1, -0.07, 0]} 
+            position={[0.1, -0.05, 0]} 
             label="CLEAR" 
             onActivate={handleClear}
             color="#666666"
-            width={0.15}
+            width={0.17}
             height={0.045}
           />
         </>
@@ -258,7 +310,7 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       {/* Status message */}
       {statusMessage && (
         <Text
-          position={[0, -0.13, 0]}
+          position={[0, -0.11, 0]}
           fontSize={0.018}
           color={statusMessage.includes('Saved') || statusMessage.includes('Recording') ? '#33ff33' : 
                  statusMessage.includes('Failed') || statusMessage.includes('Error') ? '#ff3333' : '#ffcc00'}
@@ -271,13 +323,24 @@ export function VRUI({ project, selectedOption, selectedScenario, onMenuStateCha
       
       {/* Instructions */}
       <Text
-        position={[0, -0.165, 0]}
-        fontSize={0.012}
+        position={[0, -0.16, 0]}
+        fontSize={0.014}
         color="#666666"
         anchorX="center"
         anchorY="middle"
       >
-        Point and click to interact
+        Press GRIP to close menu
+      </Text>
+      
+      {/* Movement frozen indicator */}
+      <Text
+        position={[0, -0.19, 0]}
+        fontSize={0.012}
+        color="#ffaa00"
+        anchorX="center"
+        anchorY="middle"
+      >
+        Movement paused while menu is open
       </Text>
     </group>
   );

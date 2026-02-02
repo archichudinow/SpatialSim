@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { XR, createXRStore, XROrigin, TeleportTarget, useXRControllerLocomotion } from '@react-three/xr';
 import { Group, Vector3 } from 'three';
@@ -10,7 +10,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { Recording, getVisualizationState } from './Recording';
 import { RecordingVisualization } from './RecordingVisualization';
 import { LoadingScreen } from './LoadingScreen';
-import { VRUI } from './VRUI';
+import { VRUI, isVRMenuOpen } from './VRUI';
 import recordingManager from '../utils/RecordingManager';
 import StorageService from '../utils/storageService';
 import * as THREE from 'three';
@@ -142,11 +142,25 @@ function VRLocomotion() {
   const originRef = useRef(null);
   const [position, setPosition] = useState(() => new Vector3(0, 0, 0));
   
-  // Use controller locomotion for smooth joystick-based movement
-  useXRControllerLocomotion(originRef, { speed: 2 }, { type: 'snap', degrees: 45 });
+  // Custom locomotion handler that checks menu state
+  const handleLocomotion = useCallback((velocity, rotationVelocityY) => {
+    // Don't move if VR menu is open
+    if (isVRMenuOpen()) return;
+    
+    if (originRef.current) {
+      originRef.current.position.x += velocity.x * 0.016; // Approximate delta time
+      originRef.current.position.z += velocity.z * 0.016;
+      originRef.current.rotation.y += rotationVelocityY;
+    }
+  }, []);
+  
+  // Use controller locomotion with custom handler
+  useXRControllerLocomotion(handleLocomotion, { speed: 2 }, { type: 'snap', degrees: 45 });
   
   // Handle teleportation
   const handleTeleport = (point) => {
+    // Don't teleport if VR menu is open
+    if (isVRMenuOpen()) return;
     setPosition(point.clone());
   };
   

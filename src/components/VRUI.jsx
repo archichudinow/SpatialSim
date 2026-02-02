@@ -1,12 +1,18 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
-import { useXR } from '@react-three/xr';
+import { useXR, useXRInputSourceState } from '@react-three/xr';
 import * as THREE from 'three';
 import recordingManager from '../utils/RecordingManager';
 
+// Global state to track if menu is open (used to disable locomotion)
+let menuOpenState = false;
+export function isVRMenuOpen() {
+  return menuOpenState;
+}
+
 // Simple 3D button component for VR
-function VRButton({ position, label, onClick, color = '#333333', hoverColor = '#555555', activeColor = '#007bff', isActive = false, disabled = false }) {
+function VRButton({ position, label, onClick, color = '#333333', hoverColor = '#555555', activeColor = '#007bff', isActive = false, disabled = false, width = 0.18 }) {
   const meshRef = useRef();
   const [hovered, setHovered] = useState(false);
   
@@ -20,12 +26,12 @@ function VRButton({ position, label, onClick, color = '#333333', hoverColor = '#
         onPointerOut={() => setHovered(false)}
         onClick={() => !disabled && onClick?.()}
       >
-        <boxGeometry args={[0.18, 0.06, 0.01]} />
+        <boxGeometry args={[width, 0.06, 0.01]} />
         <meshStandardMaterial color={currentColor} />
       </mesh>
       <Text
         position={[0, 0, 0.01]}
-        fontSize={0.02}
+        fontSize={0.018}
         color={disabled ? '#999999' : 'white'}
         anchorX="center"
         anchorY="middle"
@@ -37,16 +43,96 @@ function VRButton({ position, label, onClick, color = '#333333', hoverColor = '#
 }
 
 // VR Recording UI Panel
-export function VRUI({ project, selectedOption, selectedScenario }) {
+export function VRUI({ project, selectedOption, selectedScenario, onMenuStateChange }) {
   const { camera } = useThree();
   const { isPresenting } = useXR();
   const groupRef = useRef();
+  const menuPositionRef = useRef(new THREE.Vector3(0, 1.5, -1.5));
+  const menuRotationRef = useRef(new THREE.Euler(0, 0, 0));
   
+  const [menuOpen, setMenuOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  
+  // Track button states for toggle detection
+  const lastButtonStateRef = useRef({ left: false, right: false });
+  
+  // Get controller states
+  const leftController = useXRInputSourceState('controller', 'left');
+  const rightController = useXRInputSourceState('controller', 'right');
+  
+  // Position menu in front of user
+  const positionMenuInFrontOfUser = useCallback(() => {
+    const cameraPosition = new THREE.Vector3();
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
+    camera.getWorldDirection(cameraDirection);
+    
+    // Only use horizontal direction (ignore vertical look)
+    cameraDirection.y = 0;
+    cameraDirection.normalize();
+    
+    // Position 1.2m in front of user at eye level
+    const uiPosition = cameraPosition.clone()
+      .add(cameraDirection.multiplyScalar(1.2));
+    uiPosition.y = cameraPosition.y - 0.1; // Slightly below eye level
+    
+    menuPositionRef.current.copy(uiPosition);
+    
+    // Calculate rotation to face user
+    const angle = Math.atan2(
+      cameraPosition.x - uiPosition.x,
+      cameraPosition.z - uiPosition.z
+    );
+    menuRotationRef.current.set(0, angle, 0);
+  }, [camera]);
+  
+  // Toggle menu function
+  const toggleMenu = useCallback(() => {
+    setMenuOpen(prev => {
+      const newState = !prev;
+      menuOpenState = newState;
+      onMenuStateChange?.(newState);
+      if (newState) {
+        positionMenuInFrontOfUser();
+      }
+      return newState;
+    });
+  }, [onMenuStateChange, positionMenuInFrontOfUser]);
+  
+  // Close menu function
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    menuOpenState = false;
+    onMenuStateChange?.(false);
+  }, [onMenuStateChange]);
+  
+  // Check for button press to toggle menu (Y button on left, B button on right)
+  useFrame(() => {
+    if (!isPresenting) return;
+    
+    // Check left controller Y button (secondary button)
+    const leftYButton = leftController?.gamepad?.['y-button'];
+    const leftPressed = leftYButton?.state === 'pressed';
+    
+    // Check right controller B button (secondary button)  
+    const rightBButton = rightController?.gamepad?.['b-button'];
+    const rightPressed = rightBButton?.state === 'pressed';
+    
+    // Toggle on button release (to avoid repeated toggles)
+    if (lastButtonStateRef.current.left && !leftPressed) {
+      toggleMenu();
+    }
+    if (lastButtonStateRef.current.right && !rightPressed) {
+      toggleMenu();
+    }
+    
+    lastButtonStateRef.current.left = leftPressed;
+    lastButtonStateRef.current.right = rightPressed;
+  });
   
   // Update recording status
   useEffect(() => {
@@ -62,25 +148,19 @@ export function VRUI({ project, selectedOption, selectedScenario }) {
     return () => clearInterval(interval);
   }, [isPresenting]);
   
-  // Position UI in front of user
+  // Reset menu state when exiting VR
+  useEffect(() => {
+    if (!isPresenting) {
+      setMenuOpen(false);
+      menuOpenState = false;
+    }
+  }, [isPresenting]);
+  
+  // Apply position/rotation to menu group
   useFrame(() => {
-    if (!groupRef.current || !isPresenting) return;
-    
-    // Get camera world position and direction
-    const cameraPosition = new THREE.Vector3();
-    const cameraDirection = new THREE.Vector3();
-    camera.getWorldPosition(cameraPosition);
-    camera.getWorldDirection(cameraDirection);
-    
-    // Position UI 1.5m in front of user, slightly below eye level
-    const uiPosition = cameraPosition.clone()
-      .add(cameraDirection.multiplyScalar(1.5));
-    uiPosition.y = cameraPosition.y - 0.3; // Slightly below eye level
-    
-    groupRef.current.position.copy(uiPosition);
-    
-    // Make UI face the camera
-    groupRef.current.lookAt(cameraPosition);
+    if (!groupRef.current || !menuOpen) return;
+    groupRef.current.position.copy(menuPositionRef.current);
+    groupRef.current.rotation.copy(menuRotationRef.current);
   });
   
   const handleStartRecording = () => {
@@ -93,6 +173,7 @@ export function VRUI({ project, selectedOption, selectedScenario }) {
     setFrameCount(0);
     setDuration(0);
     setStatusMessage('Recording...');
+    closeMenu(); // Close menu after starting
   };
   
   const handleStopRecording = () => {
@@ -121,7 +202,8 @@ export function VRUI({ project, selectedOption, selectedScenario }) {
           setFrameCount(0);
           setDuration(0);
           setStatusMessage('');
-        }, 2000);
+          closeMenu();
+        }, 1500);
       } else {
         setStatusMessage('Save failed');
       }
@@ -138,23 +220,34 @@ export function VRUI({ project, selectedOption, selectedScenario }) {
     setFrameCount(0);
     setDuration(0);
     setStatusMessage('Cleared');
+    setTimeout(() => closeMenu(), 500);
   };
   
-  // Only render in VR mode
-  if (!isPresenting) return null;
+  const handleClose = () => {
+    closeMenu();
+  };
+  
+  // Don't render if not in VR or menu is closed
+  if (!isPresenting || !menuOpen) return null;
   
   return (
     <group ref={groupRef}>
       {/* Background panel */}
       <mesh position={[0, 0, -0.005]}>
-        <planeGeometry args={[0.5, 0.35]} />
-        <meshStandardMaterial color="#1a1a1a" transparent opacity={0.9} />
+        <planeGeometry args={[0.55, 0.4]} />
+        <meshStandardMaterial color="#1a1a1a" transparent opacity={0.95} />
+      </mesh>
+      
+      {/* Border/frame */}
+      <mesh position={[0, 0, -0.006]}>
+        <planeGeometry args={[0.56, 0.41]} />
+        <meshStandardMaterial color="#3399ff" />
       </mesh>
       
       {/* Title */}
       <Text
-        position={[0, 0.13, 0]}
-        fontSize={0.025}
+        position={[0, 0.15, 0]}
+        fontSize={0.028}
         color="white"
         anchorX="center"
         anchorY="middle"
@@ -165,8 +258,8 @@ export function VRUI({ project, selectedOption, selectedScenario }) {
       
       {/* Project/Option info */}
       <Text
-        position={[0, 0.095, 0]}
-        fontSize={0.015}
+        position={[0, 0.11, 0]}
+        fontSize={0.016}
         color="#aaaaaa"
         anchorX="center"
         anchorY="middle"
@@ -176,8 +269,8 @@ export function VRUI({ project, selectedOption, selectedScenario }) {
       
       {/* Stats */}
       <Text
-        position={[-0.12, 0.055, 0]}
-        fontSize={0.018}
+        position={[-0.15, 0.065, 0]}
+        fontSize={0.02}
         color="#3399ff"
         anchorX="left"
         anchorY="middle"
@@ -186,8 +279,8 @@ export function VRUI({ project, selectedOption, selectedScenario }) {
       </Text>
       
       <Text
-        position={[0.05, 0.055, 0]}
-        fontSize={0.018}
+        position={[0.05, 0.065, 0]}
+        fontSize={0.02}
         color="#3399ff"
         anchorX="left"
         anchorY="middle"
@@ -197,58 +290,83 @@ export function VRUI({ project, selectedOption, selectedScenario }) {
       
       {/* Recording indicator */}
       {isRecording && (
-        <mesh position={[0.18, 0.13, 0]}>
-          <circleGeometry args={[0.012, 16]} />
-          <meshStandardMaterial color="#ff3333" emissive="#ff3333" emissiveIntensity={0.5} />
-        </mesh>
+        <>
+          <mesh position={[0.22, 0.15, 0]}>
+            <circleGeometry args={[0.015, 16]} />
+            <meshStandardMaterial color="#ff3333" emissive="#ff3333" emissiveIntensity={0.8} />
+          </mesh>
+          <Text
+            position={[0.22, 0.11, 0]}
+            fontSize={0.012}
+            color="#ff3333"
+            anchorX="center"
+            anchorY="middle"
+          >
+            REC
+          </Text>
+        </>
       )}
       
-      {/* Buttons */}
+      {/* Main action button */}
       {!isRecording ? (
         <VRButton
-          position={[0, 0, 0]}
+          position={[0, 0.01, 0]}
           label="Start Recording"
           onClick={handleStartRecording}
           color="#006600"
           hoverColor="#008800"
           disabled={!selectedScenario}
+          width={0.28}
         />
       ) : (
         <VRButton
-          position={[0, 0, 0]}
+          position={[0, 0.01, 0]}
           label="Stop Recording"
           onClick={handleStopRecording}
           color="#cc0000"
           hoverColor="#ee0000"
+          width={0.28}
         />
       )}
       
-      {/* Save and Clear buttons - only show when there are frames */}
+      {/* Save and Clear buttons - only show when there are frames and not recording */}
       {frameCount > 0 && !isRecording && (
         <>
           <VRButton
-            position={[-0.1, -0.07, 0]}
+            position={[-0.1, -0.06, 0]}
             label="Save to DB"
             onClick={handleSaveToDatabase}
             color="#0066cc"
             hoverColor="#0088ee"
             disabled={isSaving}
+            width={0.16}
           />
           <VRButton
-            position={[0.1, -0.07, 0]}
+            position={[0.1, -0.06, 0]}
             label="Clear"
             onClick={handleClear}
             color="#666666"
             hoverColor="#888888"
             disabled={isSaving}
+            width={0.16}
           />
         </>
       )}
       
+      {/* Close button */}
+      <VRButton
+        position={[0, -0.13, 0]}
+        label="Close Menu"
+        onClick={handleClose}
+        color="#444444"
+        hoverColor="#666666"
+        width={0.22}
+      />
+      
       {/* Status message */}
       {statusMessage && (
         <Text
-          position={[0, -0.13, 0]}
+          position={[0, -0.175, 0]}
           fontSize={0.016}
           color={statusMessage.includes('Saved') || statusMessage.includes('Recording') ? '#33cc33' : 
                  statusMessage.includes('failed') || statusMessage.includes('Error') ? '#ff3333' : '#ffcc00'}
@@ -258,6 +376,17 @@ export function VRUI({ project, selectedOption, selectedScenario }) {
           {statusMessage}
         </Text>
       )}
+      
+      {/* Instructions */}
+      <Text
+        position={[0, -0.19, 0]}
+        fontSize={0.012}
+        color="#666666"
+        anchorX="center"
+        anchorY="middle"
+      >
+        Press Y or B button to toggle menu
+      </Text>
     </group>
   );
 }

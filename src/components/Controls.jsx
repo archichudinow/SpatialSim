@@ -3,15 +3,21 @@ import { useThree, useFrame } from '@react-three/fiber';
 import { useXR } from '@react-three/xr';
 import * as THREE from 'three';
 
-const SPEED = 0.15;
-const SPRINT_SPEED = 0.3;
+const SPEED = 0.05;
+const SPRINT_SPEED = 0.075;
 const LOOK_SPEED = 0.002;
 
-export function Controls() {
+export function Controls({ modelRef, contextModelRef }) {
   const { camera, gl } = useThree();
   const { isPresenting } = useXR();
   const keysRef = useRef({});
   const rotationRef = useRef({ x: 0, y: 0 });
+
+  // Initialize camera rotation on mount
+  useEffect(() => {
+    camera.rotation.order = 'YXZ';
+    camera.rotation.set(0, 0, 0);
+  }, [camera]);
 
   useEffect(() => {
     // Skip desktop controls setup when in VR mode
@@ -89,11 +95,18 @@ export function Controls() {
       rotationRef.current.y
     );
 
-    if (keysRef.current['w']) camera.position.addScaledVector(forward, currentSpeed);
-    if (keysRef.current['s']) camera.position.addScaledVector(forward, -currentSpeed);
-    if (keysRef.current['a']) camera.position.addScaledVector(right, -currentSpeed);
-    if (keysRef.current['d']) camera.position.addScaledVector(right, currentSpeed);
-  });
+    // Calculate desired movement
+    const movement = new THREE.Vector3(0, 0, 0);
+    if (keysRef.current['w']) movement.addScaledVector(forward, currentSpeed);
+    if (keysRef.current['s']) movement.addScaledVector(forward, -currentSpeed);
+    if (keysRef.current['a']) movement.addScaledVector(right, -currentSpeed);
+    if (keysRef.current['d']) movement.addScaledVector(right, currentSpeed);
 
+    // Apply movement with collision detection
+    if (movement.lengthSq() > 0 && isReady) {
+      // Check for wall collision (invisible ramps are walkable)
+      if (!checkWallCodirectly
+    if (movement.lengthSq() > 0) {
+      camera.position.add(movement);
   return null;
 }

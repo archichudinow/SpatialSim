@@ -228,7 +228,7 @@ function SceneContent({ project, selectedOption, selectedScenario }) {
       {/* Load option model if it exists */}
       {optionModelUrl && <Model key={`option-${selectedOption?.id || optionModelUrl}`} ref={modelRef} url={optionModelUrl} />}
       
-      <Controls />
+      <Controls modelRef={modelRef} contextModelRef={contextModelRef} />
       <FrameCapture modelRef={modelRef} contextModelRef={contextModelRef} />
       <RecordingVisualization showVisualization={showViz} />
       
@@ -375,7 +375,7 @@ export function Scene({ project, selectedOption, selectedScenario, loading, erro
         <Canvas
           events={noEvents}
           camera={{ 
-            position: [0, 1.6, 5], 
+            position: [5, 1.6, 5], 
             fov: 75,
             near: 0.01,
             far: 5000

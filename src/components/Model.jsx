@@ -77,6 +77,30 @@ function ModelContent({ url, ref }) {
     const regularGeometries = [];
     const blueGeometries = [];
     const ochreGeometries = [];
+    const collisionMeshes = []; // Store collision ramps separately
+    
+    // Helper to check if material is a collision marker
+    const isCollisionMaterial = (material) => {
+      if (!material) return false;
+      
+      // Check material name for "COLLISION" (case insensitive)
+      if (material.name && material.name.toUpperCase().includes('COLLISION')) {
+        return true;
+      }
+      
+      // Check color for magenta #FF00FF (R=1, G=0, B=1)
+      if (material.color) {
+        const r = material.color.r || 0;
+        const g = material.color.g || 0;
+        const b = material.color.b || 0;
+        // Magenta: high red, low green, high blue
+        if (r > 0.9 && g < 0.1 && b > 0.9) {
+          return true;
+        }
+      }
+      
+      return false;
+    };
     
     // Helper function to analyze if color is blue
     const isBlueish = (color) => {
@@ -101,7 +125,28 @@ function ModelContent({ url, ref }) {
     // Collect geometries based on material color
     scene.traverse((child) => {
       if (child.isMesh && child.geometry && child.material) {
-        // Clone and apply world transform to geometry
+        // Check if this is a collision mesh first
+        if (isCollisionMaterial(child.material)) {
+          // Clone mesh and make completely invisible for collision ramps
+          const collisionMesh = child.clone();
+          collisionMesh.material = new THREE.MeshBasicMaterial({
+            visible: false,
+            colorWrite: false,
+            depthWrite: false,
+          });
+          collisionMesh.visible = false; // Make mesh invisible
+          collisionMesh.updateWorldMatrix(true, false);
+          
+          // Compute BVH for collision detection
+          if (collisionMesh.geometry && !collisionMesh.geometry.boundsTree) {
+            collisionMesh.geometry.computeBoundsTree();
+          }
+          
+          collisionMeshes.push(collisionMesh);
+          return; // Skip adding to visible geometry
+        }
+        
+        // Clone and apply world transform to geometry for visible meshes
         const geometry = child.geometry.clone();
         child.updateWorldMatrix(true, false);
         geometry.applyMatrix4(child.matrixWorld);
@@ -186,6 +231,14 @@ function ModelContent({ url, ref }) {
           newScene.add(mesh);
         });
       }
+    }
+    
+    // Add invisible collision meshes (for stairs/ramps) if any exist
+    if (collisionMeshes.length > 0) {
+      console.log(`Found ${collisionMeshes.length} collision ramp(s) in model`);
+      collisionMeshes.forEach(mesh => {
+        newScene.add(mesh);
+      });
     }
     
     return newScene;

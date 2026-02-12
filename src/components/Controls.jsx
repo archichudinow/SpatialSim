@@ -102,11 +102,11 @@ export function Controls({ modelRef, contextModelRef }) {
     if (keysRef.current['a']) movement.addScaledVector(right, -currentSpeed);
     if (keysRef.current['d']) movement.addScaledVector(right, currentSpeed);
 
-    // Apply movement with collision detection
-    if (movement.lengthSq() > 0 && isReady) {
-      // Check for wall collision (invisible ramps are walkable)
-      if (!checkWallCodirectly
+    // Apply movement directly
     if (movement.lengthSq() > 0) {
       camera.position.add(movement);
+    }
+  });
+
   return null;
 }
